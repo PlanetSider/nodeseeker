@@ -25,7 +25,6 @@ NodeSeek 社区 RSS 监控与飞书推送服务。项目基于 Bun、Hono 和 SQ
 ```bash
 git clone https://github.com/PlanetSider/nodeseeker.git
 cd nodeseeker
-cp .env.example .env
 docker compose pull
 docker compose up -d
 ```
@@ -45,7 +44,7 @@ docker compose logs -f nodeseeker
 docker compose pull
 docker compose up -d
 
-# 停止服务，保留数据卷
+# 停止服务，保留 ./data 和 ./logs
 docker compose down
 ```
 
@@ -55,10 +54,10 @@ docker compose down
 ghcr.io/planetsider/nodeseeker:latest
 ```
 
-部署固定版本可在 `.env` 中设置：
+部署固定版本时，直接修改 `docker-compose.yml` 中的镜像标签：
 
-```dotenv
-NODESEEKER_IMAGE=ghcr.io/planetsider/nodeseeker:v1.0
+```yaml
+image: ghcr.io/planetsider/nodeseeker:v1.0
 ```
 
 ### Docker Run
@@ -68,8 +67,8 @@ docker run -d \
   --name nodeseeker \
   --restart unless-stopped \
   -p 3010:3010 \
-  -v nodeseeker_data:/usr/src/app/data \
-  -v nodeseeker_logs:/usr/src/app/logs \
+  -v "$PWD/data:/usr/src/app/data" \
+  -v "$PWD/logs:/usr/src/app/logs" \
   ghcr.io/planetsider/nodeseeker:latest
 ```
 
@@ -82,7 +81,6 @@ docker run -d \
 ```bash
 git clone https://github.com/PlanetSider/nodeseeker.git
 cd nodeseeker
-cp .env.example .env
 
 docker compose \
   -f docker-compose.yml \
@@ -113,24 +111,32 @@ docker run -d \
   --name nodeseeker \
   --restart unless-stopped \
   -p 3010:3010 \
-  -v nodeseeker_data:/usr/src/app/data \
+  -v "$PWD/data:/usr/src/app/data" \
+  -v "$PWD/logs:/usr/src/app/logs" \
   nodeseeker:local
 ```
 
-## 环境变量
+## Compose 配置
 
-Compose 会读取同目录的 `.env`。飞书凭据和 RSS 业务配置保存在 SQLite 中，应通过 Web 控制台配置，不需要写进环境变量。
+项目不再提供或读取 `.env` 文件。`docker-compose.yml` 使用固定默认值，数据通过相对目录绑定到宿主机。
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `NODESEEKER_IMAGE` | `ghcr.io/planetsider/nodeseeker:latest` | Compose 使用的镜像 |
-| `PORT` | `3010` | 宿主机映射端口 |
-| `CORS_ORIGINS` | `http://localhost:3010` | 允许的跨域来源，多个值用逗号分隔 |
-| `RSS_TIMEOUT` | `10000` | RSS 请求超时，单位毫秒 |
-| `RSS_CHECK_ENABLED` | `true` | 是否运行 RSS 定时任务 |
-| `LOG_LEVEL` | `info` | 日志级别：`debug`、`info`、`warn`、`error` |
+| 配置 | 默认值 | 修改方式 |
+|------|--------|----------|
+| 镜像 | `ghcr.io/planetsider/nodeseeker:latest` | 修改 `docker-compose.yml` 的 `image` |
+| 端口 | `3010:3010` | 修改 `docker-compose.yml` 的 `ports` |
+| CORS | `http://localhost:3010` | 修改 `environment.CORS_ORIGINS` |
+| RSS 超时 | `10000` | 修改 `environment.RSS_TIMEOUT` |
+| RSS 定时任务 | `true` | 修改 `environment.RSS_CHECK_ENABLED` |
+| 日志级别 | `info` | 修改 `environment.LOG_LEVEL` |
 
-容器内数据库固定存储在 `/usr/src/app/data/nodeseeker.db`，Compose 使用 `nodeseeker_data` 卷持久化该目录。
+目录映射：
+
+| 宿主机目录 | 容器目录 | 用途 |
+|------------|----------|------|
+| `./data` | `/usr/src/app/data` | SQLite 数据库 |
+| `./logs` | `/usr/src/app/logs` | 应用日志 |
+
+飞书凭据、RSS 地址、抓取间隔和代理保存在 SQLite 中，应通过 Web 控制台配置。
 
 ## 飞书配置
 
@@ -250,30 +256,23 @@ ghcr.io/planetsider/nodeseeker
 
 ## 数据备份
 
-备份数据卷：
+备份数据目录：
 
 ```bash
-docker run --rm \
-  -v nodeseeker_data:/data \
-  -v "$PWD":/backup \
-  alpine \
-  tar czf /backup/nodeseeker-backup.tar.gz -C /data .
+tar czf nodeseeker-backup.tar.gz data
 ```
 
 恢复前请先执行 `docker compose down`：
 
 ```bash
-docker run --rm \
-  -v nodeseeker_data:/data \
-  -v "$PWD":/backup \
-  alpine \
-  tar xzf /backup/nodeseeker-backup.tar.gz -C /data
+tar xzf nodeseeker-backup.tar.gz
 ```
 
-删除数据卷会永久删除数据库：
+删除 `./data` 会永久删除数据库：
 
 ```bash
-docker compose down -v
+docker compose down
+rm -rf data logs
 ```
 
 ## 故障排查

@@ -98,11 +98,12 @@ src/
 
 ## Environment Variables
 
-Key variables in `.env`:
+Key runtime variables:
 - `PORT=3010` - Server port
 - `HOST=0.0.0.0` - Bind address
 - `DATABASE_PATH=./data/nodeseeker.db` - SQLite location
-- `RSS_URL=https://rss.nodeseek.com/` - RSS source
+- `RSS_TIMEOUT=30000` - RSS request timeout
+- `RSS_CHECK_ENABLED=true` - RSS scheduler toggle
 - `LOG_LEVEL=info` - Logging verbosity
 
 ## Development Workflow
@@ -115,7 +116,7 @@ Key variables in `.env`:
 
 ## Caveats
 
-- Always use `bun install` (not npm) - project has both lockfiles
+- Always use `bun install` (not npm)
 - Database is SQLite at `./data/nodeseeker.db`
 - Restart dev server after `bun install` (hot reload doesn't catch new deps)
 - RSS cron fetches every minute automatically in dev mode

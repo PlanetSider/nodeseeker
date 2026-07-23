@@ -10,16 +10,15 @@
 ```bash
 git clone https://github.com/PlanetSider/nodeseeker.git
 cd nodeseeker
-cp .env.example .env
 
 docker compose pull
 docker compose up -d
 ```
 
-默认镜像为 `ghcr.io/planetsider/nodeseeker:latest`。固定版本可修改 `.env`：
+默认镜像为 `ghcr.io/planetsider/nodeseeker:latest`。固定版本可直接修改 `docker-compose.yml`：
 
-```dotenv
-NODESEEKER_IMAGE=ghcr.io/planetsider/nodeseeker:v1.0
+```yaml
+image: ghcr.io/planetsider/nodeseeker:v1.0
 ```
 
 更新服务：
@@ -65,42 +64,33 @@ docker compose logs -f nodeseeker
 # 重启
 docker compose restart nodeseeker
 
-# 停止并删除容器，保留数据
+# 停止并删除容器，保留 ./data 和 ./logs
 docker compose down
 ```
 
 ## 数据持久化
 
-Compose 创建两个命名卷：
+Compose 不使用命名卷，直接映射到项目目录：
 
-| 数据卷 | 容器路径 | 用途 |
-|--------|----------|------|
-| `nodeseeker_data` | `/usr/src/app/data` | SQLite 数据库 |
-| `nodeseeker_logs` | `/usr/src/app/logs` | 应用日志 |
+| 宿主机目录 | 容器路径 | 用途 |
+|------------|----------|------|
+| `./data` | `/usr/src/app/data` | SQLite 数据库 |
+| `./logs` | `/usr/src/app/logs` | 应用日志 |
 
-查看实际卷名：
-
-```bash
-docker volume ls
-```
-
-备份数据库卷：
+备份数据库目录：
 
 ```bash
-docker run --rm \
-  -v nodeseeker_data:/data \
-  -v "$PWD":/backup \
-  alpine \
-  tar czf /backup/nodeseeker-backup.tar.gz -C /data .
+tar czf nodeseeker-backup.tar.gz data
 ```
 
-删除容器和数据：
+删除容器和数据目录：
 
 ```bash
-docker compose down -v
+docker compose down
+rm -rf data logs
 ```
 
-此命令会永久删除 SQLite 数据库，执行前应先备份。
+删除 `./data` 会永久删除 SQLite 数据库，执行前应先备份。
 
 ## HTTPS 与飞书回调
 
@@ -142,12 +132,7 @@ docker pull ghcr.io/planetsider/nodeseeker:latest
 
 ### 宿主机端口冲突
 
-修改 `.env` 中的 `PORT`，例如：
-
-```dotenv
-PORT=8080
-CORS_ORIGINS=http://localhost:8080
-```
+修改 `docker-compose.yml` 中的端口映射，例如将 `3010:3010` 改为 `8080:3010`。如果前端域名变化，同步修改 `environment.CORS_ORIGINS`。
 
 ### 容器反复重启
 

@@ -1,22 +1,22 @@
 services:
   nodeseeker:
-    image: ${NODESEEKER_IMAGE:-ghcr.io/planetsider/nodeseeker:latest}
+    image: ghcr.io/planetsider/nodeseeker:latest
     container_name: nodeseeker
     restart: unless-stopped
     ports:
-      - "${PORT:-3010}:3010"
+      - "3010:3010"
     environment:
       NODE_ENV: production
       PORT: 3010
       HOST: 0.0.0.0
       DATABASE_PATH: /usr/src/app/data/nodeseeker.db
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3010}
-      RSS_TIMEOUT: ${RSS_TIMEOUT:-10000}
-      RSS_CHECK_ENABLED: ${RSS_CHECK_ENABLED:-true}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ORIGINS: http://localhost:3010
+      RSS_TIMEOUT: 10000
+      RSS_CHECK_ENABLED: "true"
+      LOG_LEVEL: info
     volumes:
-      - nodeseeker_data:/usr/src/app/data
-      - nodeseeker_logs:/usr/src/app/logs
+      - ./data:/usr/src/app/data
+      - ./logs:/usr/src/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3010/health"]
       interval: 30s
@@ -28,9 +28,3 @@ services:
       options:
         max-size: 10m
         max-file: "3"
-
-volumes:
-  nodeseeker_data:
-    name: nodeseeker_data
-  nodeseeker_logs:
-    name: nodeseeker_logs
