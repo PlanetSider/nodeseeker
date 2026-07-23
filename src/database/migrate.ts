@@ -31,6 +31,7 @@ export class DatabaseMigrator {
 
       // 读取迁移文件
       const migrationFiles = ['001_initial.sql', '002_add_rss_config.sql', '003_add_telegram_mode.sql', '004_add_feishu_config.sql', '005_add_keyword_strict_flags.sql'];
+      const migrationsDirectory = join(process.cwd(), 'src', 'database', 'migrations');
 
       for (const filename of migrationFiles) {
         if (executedMigrations.includes(filename)) {
@@ -40,7 +41,7 @@ export class DatabaseMigrator {
 
         logger.task.info(`执行迁移: ${filename}`);
 
-        const migrationPath = join(__dirname, 'migrations', filename);
+        const migrationPath = join(migrationsDirectory, filename);
         const migrationSQL = readFileSync(migrationPath, 'utf-8');
 
         // 执行迁移
