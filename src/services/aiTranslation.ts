@@ -5,6 +5,7 @@ import type { AITranslationConfig, Post, TranslatedPostContent } from '../types'
 interface ChatCompletionResponse {
     choices?: Array<{ message?: { content?: string } }>;
     error?: { message?: string };
+    message?: string;
 }
 
 export class AITranslationService {
@@ -55,10 +56,24 @@ export class AITranslationService {
                     ],
                 }),
             });
-            const result = await response.json() as ChatCompletionResponse;
-            if (!response.ok) throw new Error(result.error?.message || `HTTP ${response.status}`);
+            const responseText = await response.text();
+            let result: ChatCompletionResponse | null = null;
+            try {
+                result = responseText ? JSON.parse(responseText) as ChatCompletionResponse | null : null;
+            } catch {
+                // Some OpenAI-compatible gateways return plain-text errors.
+            }
 
-            const rawContent = result.choices?.[0]?.message?.content?.trim();
+            if (!response.ok) {
+                const plainError = responseText.trim();
+                const errorMessage = result?.error?.message
+                    || result?.message
+                    || (plainError && plainError !== 'null' ? plainError : '')
+                    || `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
+                throw new Error(errorMessage);
+            }
+
+            const rawContent = result?.choices?.[0]?.message?.content?.trim();
             if (!rawContent) throw new Error('模型未返回翻译内容');
             const parsed = JSON.parse(rawContent.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')) as Partial<TranslatedPostContent>;
             if (!parsed.title || typeof parsed.content !== 'string') throw new Error('模型返回格式不正确');

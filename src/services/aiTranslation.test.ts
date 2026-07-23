@@ -70,4 +70,32 @@ describe('AITranslationService', () => {
 
         expect(result).toBeNull();
     });
+
+    it('handles null JSON error responses without throwing a TypeError', async () => {
+        const logError = mock(() => {});
+        logger.error = logError;
+        globalThis.fetch = mock(async () => Response.json(null, { status: 502, statusText: 'Bad Gateway' })) as typeof fetch;
+
+        const result = await new AITranslationService(createDatabaseMock() as any).translatePost(post);
+
+        expect(result).toBeNull();
+        expect(logError).toHaveBeenCalledWith(
+            'AI 翻译失败: Hello world',
+            expect.objectContaining({ message: 'HTTP 502 Bad Gateway' }),
+        );
+    });
+
+    it('reports plain-text API errors', async () => {
+        const logError = mock(() => {});
+        logger.error = logError;
+        globalThis.fetch = mock(async () => new Response('upstream unavailable', { status: 503 })) as typeof fetch;
+
+        const result = await new AITranslationService(createDatabaseMock() as any).translatePost(post);
+
+        expect(result).toBeNull();
+        expect(logError).toHaveBeenCalledWith(
+            'AI 翻译失败: Hello world',
+            expect.objectContaining({ message: 'upstream unavailable' }),
+        );
+    });
 });
