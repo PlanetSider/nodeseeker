@@ -122,6 +122,9 @@ export const HomePage: FC = () => {
                 <option value="inside">内版</option>
                 <option value="sandbox">沙盒</option>
               </select>
+              <select id="filterRssSource" class="filter-select">
+                <option value="">全部 RSS 来源</option>
+              </select>
               {/* 订阅筛选 - 登录时显示 */}
               <select id="filterSubscription" class="filter-select" style="display: none;">
                 <option value="">全部订阅</option>
@@ -243,9 +246,8 @@ export const HomePage: FC = () => {
               </div>
               <div class="sub-form-group">
                 <label class="sub-form-label">RSS 来源</label>
-                <select id="subRssSource" class="input-field">
-                  <option value="">全部来源</option>
-                </select>
+                <select id="subRssSource" class="input-field" multiple size={3}></select>
+                <span class="form-hint">可多选；不选择表示全部来源</span>
               </div>
             </div>
             {/* 第三行：添加按钮 */}
@@ -332,10 +334,6 @@ export const HomePage: FC = () => {
         </div>
         <div class="drawer-content">
           <form id="aiTranslationForm" class="form-stack">
-            <label class="toggle-option">
-              <input type="checkbox" id="aiTranslationEnabled" />
-              启用命中文章 AI 翻译后推送
-            </label>
             <div class="form-group">
               <label for="aiTranslationUrl" class="form-label">API URL</label>
               <input type="url" id="aiTranslationUrl" class="input-field" placeholder="https://api.openai.com/v1/chat/completions" />
@@ -352,12 +350,9 @@ export const HomePage: FC = () => {
               <label for="aiTranslationPrompt" class="form-label">提示词</label>
               <textarea id="aiTranslationPrompt" class="input-field" rows={7} placeholder="告诉模型如何翻译标题和正文"></textarea>
             </div>
-            <div class="form-group">
-              <label class="form-label">应用于 RSS 来源</label>
-              <div id="aiTranslationSources" class="source-checkbox-list"></div>
-            </div>
+            <div class="form-hint">翻译开关已移动到 RSS 配置，可为每个来源单独启用。</div>
             <div class="form-actions">
-              <button type="button" id="testAiTranslationBtn" class="btn btn-secondary">测试配置</button>
+              <button type="button" id="testAiTranslationBtn" class="btn btn-secondary">抓取并测试推送</button>
               <button type="submit" class="btn btn-primary">保存配置</button>
             </div>
           </form>
@@ -479,6 +474,18 @@ export const HomePage: FC = () => {
             <div class="stat-card-simple">
               <span class="stat-value" id="drawerStatDatabaseSize">0 M</span>
               <span class="stat-label">数据库大小</span>
+            </div>
+            <div class="stat-card-simple">
+              <span class="stat-value" id="drawerStatAiTotalTokens">0</span>
+              <span class="stat-label">AI Token 总量</span>
+            </div>
+            <div class="stat-card-simple">
+              <span class="stat-value" id="drawerStatAiPromptTokens">0</span>
+              <span class="stat-label">输入 Token</span>
+            </div>
+            <div class="stat-card-simple">
+              <span class="stat-value" id="drawerStatAiCompletionTokens">0</span>
+              <span class="stat-label">输出 Token</span>
             </div>
           </div>
 

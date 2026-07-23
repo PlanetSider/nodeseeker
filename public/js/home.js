@@ -428,6 +428,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const filterPanel = document.getElementById("filterPanel");
     const filterCategory = document.getElementById("filterCategory");
     const filterSubscription = document.getElementById("filterSubscription");
+    const filterRssSource = document.getElementById("filterRssSource");
     const filterCreator = document.getElementById("filterCreator");
     const clearFiltersBtn = document.getElementById("clearFiltersBtn");
 
@@ -483,6 +484,12 @@ document.addEventListener("DOMContentLoaded", function () {
       loadPosts(1, currentFilters);
     });
 
+    filterRssSource?.addEventListener("change", (e) => {
+      if (e.target.value) currentFilters.rssSourceId = e.target.value;
+      else delete currentFilters.rssSourceId;
+      loadPosts(1, currentFilters);
+    });
+
     // 订阅筛选
     filterSubscription?.addEventListener("change", (e) => {
       const value = e.target.value;
@@ -507,9 +514,11 @@ document.addEventListener("DOMContentLoaded", function () {
     clearFiltersBtn?.addEventListener("click", () => {
       filterCategory.value = "";
       if (filterSubscription) filterSubscription.value = "";
+      if (filterRssSource) filterRssSource.value = "";
       filterCreator.value = "";
       delete currentFilters.category;
       delete currentFilters.subId;
+      delete currentFilters.rssSourceId;
       delete currentFilters.creator;
       loadPosts(1, currentFilters);
     });
@@ -565,6 +574,9 @@ document.addEventListener("DOMContentLoaded", function () {
       if (el("drawerStatPushed")) el("drawerStatPushed").textContent = data.pushed_posts || 0;
       if (el("drawerStatTotalPosts")) el("drawerStatTotalPosts").textContent = data.total_posts || 0;
       if (el("drawerStatDatabaseSize")) el("drawerStatDatabaseSize").textContent = `${Number(data.database_size_mb || 0).toFixed(2)} M`;
+      if (el("drawerStatAiTotalTokens")) el("drawerStatAiTotalTokens").textContent = Number(data.ai_total_tokens || 0).toLocaleString();
+      if (el("drawerStatAiPromptTokens")) el("drawerStatAiPromptTokens").textContent = Number(data.ai_prompt_tokens || 0).toLocaleString();
+      if (el("drawerStatAiCompletionTokens")) el("drawerStatAiCompletionTokens").textContent = Number(data.ai_completion_tokens || 0).toLocaleString();
     }
   }
 
@@ -832,13 +844,21 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function renderRssSourceOptions() {
     const select = document.getElementById("subRssSource");
-    if (!select) return;
-    const currentValue = select.value;
-    select.innerHTML = '<option value="">全部来源</option>' + rssSources
+    if (select) {
+      const currentValues = new Set(Array.from(select.selectedOptions).map((option) => option.value));
+      select.innerHTML = rssSources
+        .filter((source) => source.enabled === 1)
+        .map((source) => `<option value="${source.id}" ${currentValues.has(String(source.id)) ? "selected" : ""}>${escapeHtml(source.name)}</option>`)
+        .join("");
+    }
+    const filter = document.getElementById("filterRssSource");
+    if (!filter) return;
+    const currentValue = filter.value;
+    filter.innerHTML = '<option value="">全部 RSS 来源</option>' + rssSources
       .filter((source) => source.enabled === 1)
       .map((source) => `<option value="${source.id}">${escapeHtml(source.name)}</option>`)
       .join("");
-    select.value = currentValue;
+    filter.value = currentValue;
   }
 
   function renderRssSources() {
@@ -857,6 +877,10 @@ document.addEventListener("DOMContentLoaded", function () {
             <input class="rss-source-subscription-enabled" type="checkbox" ${source.subscription_enabled !== 0 ? "checked" : ""} />
             开启订阅
           </label>
+          <label class="subscription-strict-option" title="推送前使用 AI 翻译标题和正文">
+            <input class="rss-source-ai-enabled" type="checkbox" ${source.ai_translation_enabled === 1 ? "checked" : ""} />
+            AI 翻译
+          </label>
         </div>
         <div class="subscription-actions">
           <button class="btn btn-secondary btn-xs test-source-btn" type="button">测试</button>
@@ -873,6 +897,13 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!result?.success) return;
     rssSources = result.data || [];
     renderRssSources();
+    renderRssSourceOptions();
+  }
+
+  async function loadPublicRssSources() {
+    const result = await apiRequest("/api/rss/sources/public");
+    if (!result?.success) return;
+    rssSources = result.data || [];
     renderRssSourceOptions();
   }
 
@@ -940,6 +971,7 @@ document.addEventListener("DOMContentLoaded", function () {
           url: document.getElementById("rssSourceUrl").value.trim(),
           enabled: 1,
           subscription_enabled: 1,
+          ai_translation_enabled: 0,
         }),
       });
       if (!result?.success) return Toast.error(result?.message || "添加失败");
@@ -987,6 +1019,7 @@ document.addEventListener("DOMContentLoaded", function () {
             url: item.querySelector(".rss-source-url").value.trim(),
             enabled: item.querySelector(".rss-source-enabled").checked ? 1 : 0,
             subscription_enabled: item.querySelector(".rss-source-subscription-enabled").checked ? 1 : 0,
+            ai_translation_enabled: item.querySelector(".rss-source-ai-enabled").checked ? 1 : 0,
           }),
         });
         if (!result?.success) return Toast.error(result?.message || "保存失败");
@@ -1088,36 +1121,22 @@ document.addEventListener("DOMContentLoaded", function () {
     const result = await apiRequest("/api/ai-translation/config");
     if (!result?.success) return;
     const data = result.data;
-    document.getElementById("aiTranslationEnabled").checked = data.enabled === 1;
     document.getElementById("aiTranslationUrl").value = data.api_url || "";
     document.getElementById("aiTranslationKey").value = "";
     document.getElementById("aiTranslationKey").placeholder = data.has_api_key ? "已配置，留空则不修改" : "请输入 API Key";
     document.getElementById("aiTranslationModel").value = data.model || "";
     document.getElementById("aiTranslationPrompt").value = data.prompt || "";
-    renderAiTranslationSources(data.sources || [], data.rss_source_ids || []);
-  }
-
-  function renderAiTranslationSources(sources, selectedIds) {
-    const container = document.getElementById("aiTranslationSources");
-    if (!container) return;
-    const selected = new Set(selectedIds);
-    container.innerHTML = sources.map((source) => `
-      <label class="source-checkbox-item">
-        <input type="checkbox" value="${source.id}" ${selected.has(source.id) ? "checked" : ""} />
-        <span>${escapeHtml(source.name)}</span>
-        ${source.enabled === 1 ? "" : '<span class="tag">已禁用</span>'}
-      </label>
-    `).join("");
+    rssSources = data.sources || rssSources;
   }
 
   function collectAiTranslationConfig(includeEmptyKey = false) {
     const apiKey = document.getElementById("aiTranslationKey").value.trim();
     const data = {
-      enabled: document.getElementById("aiTranslationEnabled").checked ? 1 : 0,
+      enabled: 1,
       api_url: document.getElementById("aiTranslationUrl").value.trim(),
       model: document.getElementById("aiTranslationModel").value.trim(),
       prompt: document.getElementById("aiTranslationPrompt").value.trim(),
-      rss_source_ids: Array.from(document.querySelectorAll("#aiTranslationSources input:checked")).map((input) => Number(input.value)),
+      rss_source_ids: rssSources.filter((source) => source.ai_translation_enabled === 1).map((source) => source.id),
     };
     if (apiKey || includeEmptyKey) data.api_key = apiKey;
     return data;
@@ -1138,15 +1157,16 @@ document.addEventListener("DOMContentLoaded", function () {
     document.getElementById("testAiTranslationBtn")?.addEventListener("click", async () => {
       const data = collectAiTranslationConfig();
       if (!data.api_url || !data.model) return Toast.warning("请填写 API URL 和模型");
-      Toast.info("正在调用模型测试翻译...");
+      if (data.rss_source_ids.length === 0) return Toast.warning("请先在 RSS 配置中为至少一个来源开启 AI 翻译");
+      Toast.info("正在抓取 RSS、翻译并推送到飞书...");
       const result = await apiRequest("/api/ai-translation/test", {
         method: "POST",
         body: JSON.stringify(data),
       });
       if (result?.success) {
-        Toast.success(`测试成功：${result.data.title}`);
+        Toast.success(result.message || "测试成功，译文已推送到飞书", 5000);
       } else {
-        Toast.error(result?.message || "配置测试失败");
+        Toast.error(result?.message || "测试失败", 8000);
       }
     });
   }
@@ -1235,9 +1255,8 @@ document.addEventListener("DOMContentLoaded", function () {
         <div class="subscription-filters">
           <label class="subscription-strict-option">
             来源
-            <select class="input-field subscription-source-select" data-id="${sub.id}">
-              <option value="">全部来源</option>
-              ${rssSources.map((source) => `<option value="${source.id}" ${sub.rss_source_id === source.id ? "selected" : ""}>${escapeHtml(source.name)}</option>`).join("")}
+            <select class="input-field subscription-source-select" data-id="${sub.id}" multiple size="3">
+              ${rssSources.map((source) => `<option value="${source.id}" ${(sub.rss_source_ids || []).includes(source.id) ? "selected" : ""}>${escapeHtml(source.name)}</option>`).join("")}
             </select>
           </label>
           ${sub.creator ? `<span class="tag">👤 ${escapeHtml(sub.creator)}</span>` : ""}
@@ -1273,7 +1292,7 @@ document.addEventListener("DOMContentLoaded", function () {
       select.addEventListener("change", async () => {
         const result = await apiRequest(`/api/subscriptions/${select.dataset.id}`, {
           method: "PUT",
-          body: JSON.stringify({ rss_source_id: select.value ? Number(select.value) : null }),
+          body: JSON.stringify({ rss_source_ids: Array.from(select.selectedOptions).map((option) => Number(option.value)) }),
         });
         if (result?.success) {
           Toast.success("订阅来源已更新");
@@ -1318,9 +1337,7 @@ document.addEventListener("DOMContentLoaded", function () {
         keyword3_strict: document.getElementById("keyword3Strict").checked ? 1 : 0,
         creator: document.getElementById("subCreator").value.trim() || undefined,
         category: document.getElementById("subCategory").value || undefined,
-        rss_source_id: document.getElementById("subRssSource").value
-          ? Number(document.getElementById("subRssSource").value)
-          : undefined,
+        rss_source_ids: Array.from(document.getElementById("subRssSource").selectedOptions).map((option) => Number(option.value)),
       };
 
       if (!data.keyword1 && !data.keyword2 && !data.keyword3 && !data.creator && !data.category) {
@@ -1628,6 +1645,7 @@ document.addEventListener("DOMContentLoaded", function () {
     loadPosts();
     updateStats();
     loadFilterSubscriptions();
+    loadPublicRssSources();
   }
 
   init();

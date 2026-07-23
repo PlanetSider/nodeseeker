@@ -33,6 +33,15 @@ function createDatabaseMock(overrides: Record<string, unknown> = {}) {
             rss_source_ids: [2],
             ...overrides,
         })),
+        getRSSSourceById: mock((id: number) => ({
+            id,
+            name: 'Source',
+            url: 'https://example.com/rss',
+            enabled: 1,
+            subscription_enabled: 1,
+            ai_translation_enabled: 1,
+        })),
+        recordAITranslationUsage: mock(() => {}),
     };
 }
 
@@ -43,20 +52,33 @@ describe('AITranslationService', () => {
             requests.push(JSON.parse(init!.body!.toString()));
             return Response.json({
                 choices: [{ message: { content: JSON.stringify({ title: '你好世界', content: '这是一段正文。' }) } }],
+                usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
             });
         }) as typeof fetch;
+        const database = createDatabaseMock();
 
-        const result = await new AITranslationService(createDatabaseMock() as any).translatePost(post);
+        const result = await new AITranslationService(database as any).translatePost(post);
 
         expect(result).toEqual({ title: '你好世界', content: '这是一段正文。' });
         expect(requests[0].model).toBe('test-model');
         expect(requests[0].messages[1].content).toContain('Hello world');
+        expect(database.recordAITranslationUsage).toHaveBeenCalledWith(10, 5, 15);
     });
 
     it('skips translation when the RSS source is not selected', async () => {
         globalThis.fetch = mock(async () => Response.json({})) as typeof fetch;
 
-        const result = await new AITranslationService(createDatabaseMock({ rss_source_ids: [1] }) as any).translatePost(post);
+        const database = createDatabaseMock();
+        database.getRSSSourceById = mock(() => ({
+            id: 2,
+            name: 'Source',
+            url: 'https://example.com/rss',
+            enabled: 1,
+            subscription_enabled: 1,
+            ai_translation_enabled: 0,
+        }));
+
+        const result = await new AITranslationService(database as any).translatePost(post);
 
         expect(result).toBeNull();
         expect(globalThis.fetch).not.toHaveBeenCalled();
@@ -97,5 +119,13 @@ describe('AITranslationService', () => {
             'AI 翻译失败: Hello world',
             expect.objectContaining({ message: 'upstream unavailable' }),
         );
+    });
+
+    it('exposes translation errors to end-to-end tests', async () => {
+        globalThis.fetch = mock(async () => new Response('invalid model', { status: 400 })) as typeof fetch;
+        const config = createDatabaseMock().getAITranslationConfig();
+
+        await expect(new AITranslationService(createDatabaseMock() as any).translateWithConfig(post, config as any))
+            .rejects.toThrow('invalid model');
     });
 });

@@ -67,6 +67,17 @@ describe('MatcherService strict keyword matching', () => {
 
         expect(matches.map((match) => match.subscription?.id)).toEqual([2]);
     });
+
+    it('matches subscriptions scoped to multiple RSS sources', () => {
+        const matcher = createMatcherWithSubscriptions([
+            { id: 1, keyword1: 'ncloud', rss_source_ids: [1, 2] },
+            { id: 2, keyword1: 'ncloud', rss_source_ids: [3] },
+        ]);
+
+        const matches = matcher.checkPostMatches({ ...basePost, rss_source_id: 2 });
+
+        expect(matches.map((match) => match.subscription?.id)).toEqual([1]);
+    });
 });
 
 describe('MatcherService RSS subscription toggle', () => {

@@ -50,6 +50,8 @@ export interface KeywordSub {
   category?: string;
   rss_source_id?: number;
   rss_source_name?: string;
+  rss_source_ids?: number[];
+  rss_source_names?: string[];
   created_at?: string;
   updated_at?: string;
 }
@@ -60,6 +62,7 @@ export interface RSSSource {
   url: string;
   enabled: number;
   subscription_enabled: number;
+  ai_translation_enabled: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -71,6 +74,9 @@ export interface AITranslationConfig {
   model: string;
   prompt: string;
   rss_source_ids: number[];
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
   created_at?: string;
   updated_at?: string;
 }

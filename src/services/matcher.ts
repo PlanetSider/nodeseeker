@@ -52,7 +52,8 @@ export class MatcherService {
     };
 
     for (const sub of subscriptions) {
-      if (sub.rss_source_id && sub.rss_source_id !== post.rss_source_id) {
+      const sourceIds = sub.rss_source_ids?.length ? sub.rss_source_ids : (sub.rss_source_id ? [sub.rss_source_id] : []);
+      if (sourceIds.length > 0 && (!post.rss_source_id || !sourceIds.includes(post.rss_source_id))) {
         continue;
       }
       const matchResult = this.matchPostWithSubscription(preprocessedPost, sub, config);

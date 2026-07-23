@@ -147,7 +147,7 @@ describe('FeishuService', () => {
             keyword1_strict: 1,
             keyword2: 'vps',
             keyword2_strict: 0,
-            rss_source_id: 2,
+            rss_source_ids: [2],
         }));
         expect(result?.toast).toEqual(expect.objectContaining({ type: 'success' }));
     });
@@ -170,7 +170,7 @@ describe('FeishuService', () => {
         await action(1);
         await action(2);
 
-        expect(database.subscriptions.map((sub) => sub.rss_source_id)).toEqual([1, 2]);
+        expect(database.subscriptions.map((sub) => sub.rss_source_ids?.[0] || sub.rss_source_id)).toEqual([1, 2]);
     });
 
     it('shows monitored RSS sources for /del keyword and removes a selected source', async () => {
@@ -208,7 +208,7 @@ describe('FeishuService', () => {
             } },
         });
 
-        expect(database.subscriptions.map((sub) => sub.rss_source_id)).toEqual([2]);
+        expect(database.subscriptions.map((sub) => sub.rss_source_ids?.[0] || sub.rss_source_id)).toEqual([2]);
         expect((result?.card as any).elements.filter((element: any) => element.tag === 'action')).toHaveLength(1);
     });
 
@@ -247,7 +247,7 @@ describe('FeishuService', () => {
             } },
         });
 
-        expect(database.subscriptions.map((sub) => sub.rss_source_id)).toEqual([2]);
+        expect(database.subscriptions.map((sub) => sub.rss_source_ids?.[0] || sub.rss_source_id)).toEqual([2]);
         expect(database.subscriptions[0].keyword1).toBe('vps');
     });
 });

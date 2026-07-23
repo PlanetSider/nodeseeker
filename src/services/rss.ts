@@ -247,7 +247,7 @@ export class RSSService {
   /**
    * 清洗和格式化数据
    */
-  private cleanAndFormatData(item: RSSItem, rssSourceId: number): ParsedPost | null {
+  parseRSSItem(item: RSSItem, rssSourceId: number): ParsedPost | null {
     const postId = this.extractPostId(item);
     if (!postId) {
       logger.warn("无法提取 post_id:", item.link);
@@ -335,7 +335,7 @@ export class RSSService {
           try {
             processed++;
 
-            const parsedPost = this.cleanAndFormatData(item, source.id!);
+            const parsedPost = this.parseRSSItem(item, source.id!);
             if (!parsedPost) {
               errors++;
               continue;
@@ -361,7 +361,12 @@ export class RSSService {
             // 检查是否有订阅（关键词订阅）
             const subscriptions = this.dbService.getAllKeywordSubs();
             const shouldProcess = source.subscription_enabled === 0
-              || subscriptions.some((subscription) => !subscription.rss_source_id || subscription.rss_source_id === source.id);
+              || subscriptions.some((subscription) => {
+                const sourceIds = subscription.rss_source_ids?.length
+                  ? subscription.rss_source_ids
+                  : (subscription.rss_source_id ? [subscription.rss_source_id] : []);
+                return sourceIds.length === 0 || sourceIds.includes(source.id!);
+              });
 
             const postsWithDefaults = newPostsToCreate.map((post) => ({
               ...post,

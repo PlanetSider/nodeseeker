@@ -339,6 +339,7 @@ export class DatabaseService {
       category?: string;
       search?: string;
       subId?: number;
+      rssSourceId?: number;
     }
   ): {
     posts: Array<Post & { keywords?: string[] }>;
@@ -382,11 +383,17 @@ export class DatabaseService {
         conditions.push('p.title LIKE ?');
         params.push(`%${filters.search}%`);
       }
+
+      if (filters.rssSourceId !== undefined) {
+        conditions.push('p.rss_source_id = ?');
+        params.push(filters.rssSourceId);
+      }
       
       // 按订阅筛选：直接从订阅详情构建查询条件，而非通过 sub_id 关联
       if (filters.subId !== undefined) {
         const sub = this.getKeywordSubById(filters.subId);
         if (sub) {
+          const sourceIds = sub.rss_source_ids?.length ? sub.rss_source_ids : (sub.rss_source_id ? [sub.rss_source_id] : []);
           // 关键词匹配：每个非空关键词必须在标题或内容中出现（AND 关系）
           const keywords = [sub.keyword1, sub.keyword2, sub.keyword3]
             .filter(k => k && k.trim().length > 0) as string[];
@@ -408,9 +415,9 @@ export class DatabaseService {
             params.push(`%${sub.category.trim()}%`);
           }
 
-          if (sub.rss_source_id) {
-            conditions.push('p.rss_source_id = ?');
-            params.push(sub.rss_source_id);
+          if (sourceIds.length > 0) {
+            conditions.push(`p.rss_source_id IN (${sourceIds.map(() => '?').join(',')})`);
+            params.push(...sourceIds);
           }
         } else {
           // 订阅不存在，返回空结果
@@ -512,14 +519,16 @@ export class DatabaseService {
       sub.keyword3_strict || 0,
       sub.creator || null,
       sub.category || null,
-      sub.rss_source_id || null
+      (sub.rss_source_ids?.length === 1 ? sub.rss_source_ids[0] : sub.rss_source_id) || null
     ) as KeywordSub;
+
+    this.setKeywordSubSources(result.id!, sub.rss_source_ids || (sub.rss_source_id ? [sub.rss_source_id] : []));
 
     // 清理相关缓存
     this.clearCacheByPattern('KeywordSubs');
     this.clearCacheByPattern('Subscriptions');
 
-    return result;
+    return this.withKeywordSubSources([result])[0];
   }
 
   getAllKeywordSubs(): KeywordSub[] {
@@ -533,7 +542,7 @@ export class DatabaseService {
       LEFT JOIN rss_sources rs ON ks.rss_source_id = rs.id
       ORDER BY ks.created_at DESC
     `);
-    const subscriptions = stmt.all() as KeywordSub[];
+    const subscriptions = this.withKeywordSubSources(stmt.all() as KeywordSub[]);
     
     // 缓存60秒，因为订阅变化不频繁
     this.setCache(cacheKey, subscriptions, 60000);
@@ -541,6 +550,7 @@ export class DatabaseService {
   }
 
   deleteKeywordSub(id: number): boolean {
+    this.db.query('DELETE FROM keyword_sub_sources WHERE keyword_sub_id = ?').run(id);
     const stmt = this.db.query('DELETE FROM keywords_sub WHERE id = ?');
     const result = stmt.run(id);
     
@@ -587,7 +597,10 @@ export class DatabaseService {
       updates.push('category = ?');
       values.push(sub.category || null);
     }
-    if (sub.rss_source_id !== undefined) {
+    if (sub.rss_source_ids !== undefined) {
+      updates.push('rss_source_id = ?');
+      values.push(sub.rss_source_ids.length === 1 ? sub.rss_source_ids[0] : null);
+    } else if (sub.rss_source_id !== undefined) {
       updates.push('rss_source_id = ?');
       values.push(sub.rss_source_id || null);
     }
@@ -607,9 +620,14 @@ export class DatabaseService {
     `);
 
     const result = stmt.get(...values) as KeywordSub | null;
+    if (result && sub.rss_source_ids !== undefined) {
+      this.setKeywordSubSources(id, sub.rss_source_ids);
+    } else if (result && sub.rss_source_id !== undefined) {
+      this.setKeywordSubSources(id, sub.rss_source_id ? [sub.rss_source_id] : []);
+    }
     this.clearCacheByPattern('KeywordSubs');
     this.clearCacheByPattern('Subscriptions');
-    return result;
+    return result ? this.withKeywordSubSources([result])[0] : null;
   }
 
   getKeywordSubById(id: number): KeywordSub | null {
@@ -619,7 +637,42 @@ export class DatabaseService {
       LEFT JOIN rss_sources rs ON ks.rss_source_id = rs.id
       WHERE ks.id = ?
     `);
-    return stmt.get(id) as KeywordSub | null;
+    const result = stmt.get(id) as KeywordSub | null;
+    return result ? this.withKeywordSubSources([result])[0] : null;
+  }
+
+  private setKeywordSubSources(keywordSubId: number, sourceIds: number[]): void {
+    this.db.query('DELETE FROM keyword_sub_sources WHERE keyword_sub_id = ?').run(keywordSubId);
+    const insert = this.db.query('INSERT OR IGNORE INTO keyword_sub_sources (keyword_sub_id, rss_source_id) VALUES (?, ?)');
+    for (const sourceId of new Set(sourceIds)) insert.run(keywordSubId, sourceId);
+  }
+
+  private withKeywordSubSources(subscriptions: KeywordSub[]): KeywordSub[] {
+    if (subscriptions.length === 0) return subscriptions;
+    const ids = subscriptions.map((sub) => sub.id!).filter(Boolean);
+    if (ids.length === 0) return subscriptions;
+    const rows = this.db.query(`
+      SELECT kss.keyword_sub_id, kss.rss_source_id, rs.name
+      FROM keyword_sub_sources kss
+      LEFT JOIN rss_sources rs ON kss.rss_source_id = rs.id
+      WHERE kss.keyword_sub_id IN (${ids.map(() => '?').join(',')})
+      ORDER BY rs.id ASC
+    `).all(...ids) as Array<{ keyword_sub_id: number; rss_source_id: number; name?: string }>;
+    const grouped = new Map<number, { ids: number[]; names: string[] }>();
+    for (const row of rows) {
+      const entry = grouped.get(row.keyword_sub_id) || { ids: [], names: [] };
+      entry.ids.push(row.rss_source_id);
+      if (row.name) entry.names.push(row.name);
+      grouped.set(row.keyword_sub_id, entry);
+    }
+    return subscriptions.map((sub) => {
+      const entry = grouped.get(sub.id!);
+      return {
+        ...sub,
+        rss_source_ids: entry?.ids || (sub.rss_source_id ? [sub.rss_source_id] : []),
+        rss_source_names: entry?.names || (sub.rss_source_name ? [sub.rss_source_name] : []),
+      };
+    });
   }
 
   getAllRSSSources(includeDisabled: boolean = false): RSSSource[] {
@@ -634,7 +687,7 @@ export class DatabaseService {
   ensureDefaultRSSSource(url: string = 'https://rss.nodeseek.com/'): RSSSource {
     const existing = this.getAllRSSSources(true)[0];
     if (existing) return existing;
-    return this.createRSSSource({ name: 'NodeSeek', url, enabled: 1, subscription_enabled: 1 });
+    return this.createRSSSource({ name: 'NodeSeek', url, enabled: 1, subscription_enabled: 1, ai_translation_enabled: 0 });
   }
 
   getRSSSourceById(id: number): RSSSource | null {
@@ -644,11 +697,11 @@ export class DatabaseService {
 
   createRSSSource(source: Omit<RSSSource, 'id' | 'created_at' | 'updated_at'>): RSSSource {
     const stmt = this.db.query(`
-      INSERT INTO rss_sources (name, url, enabled, subscription_enabled)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO rss_sources (name, url, enabled, subscription_enabled, ai_translation_enabled)
+      VALUES (?, ?, ?, ?, ?)
       RETURNING *
     `);
-    const result = stmt.get(source.name, source.url, source.enabled ?? 1, source.subscription_enabled ?? 1) as RSSSource;
+    const result = stmt.get(source.name, source.url, source.enabled ?? 1, source.subscription_enabled ?? 1, source.ai_translation_enabled ?? 0) as RSSSource;
     this.queryCache.clear();
     return result;
   }
@@ -672,6 +725,10 @@ export class DatabaseService {
       updates.push('subscription_enabled = ?');
       values.push(source.subscription_enabled);
     }
+    if (source.ai_translation_enabled !== undefined) {
+      updates.push('ai_translation_enabled = ?');
+      values.push(source.ai_translation_enabled);
+    }
     if (updates.length === 0) return this.getRSSSourceById(id);
 
     updates.push('updated_at = CURRENT_TIMESTAMP');
@@ -689,6 +746,7 @@ export class DatabaseService {
 
   deleteRSSSource(id: number): boolean {
     this.db.query('DELETE FROM ai_translation_sources WHERE rss_source_id = ?').run(id);
+    this.db.query('DELETE FROM keyword_sub_sources WHERE rss_source_id = ?').run(id);
     this.db.query('UPDATE keywords_sub SET rss_source_id = NULL WHERE rss_source_id = ?').run(id);
     this.db.query('UPDATE posts SET rss_source_id = NULL WHERE rss_source_id = ?').run(id);
     const stmt = this.db.query('DELETE FROM rss_sources WHERE id = ?');
@@ -699,7 +757,7 @@ export class DatabaseService {
 
   getAITranslationConfig(): AITranslationConfig {
     const config = this.db.query('SELECT * FROM ai_translation_config WHERE id = 1').get() as Omit<AITranslationConfig, 'rss_source_ids'>;
-    const sources = this.db.query('SELECT rss_source_id FROM ai_translation_sources ORDER BY rss_source_id').all() as Array<{ rss_source_id: number }>;
+    const sources = this.db.query('SELECT id AS rss_source_id FROM rss_sources WHERE ai_translation_enabled = 1 ORDER BY id').all() as Array<{ rss_source_id: number }>;
     return { ...config, rss_source_ids: sources.map((source) => source.rss_source_id) };
   }
 
@@ -718,13 +776,22 @@ export class DatabaseService {
         this.db.query(`UPDATE ai_translation_config SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = 1`).run(...values);
       }
       if (config.rss_source_ids !== undefined) {
-        this.db.query('DELETE FROM ai_translation_sources').run();
-        const insert = this.db.query('INSERT INTO ai_translation_sources (rss_source_id) VALUES (?)');
-        for (const sourceId of new Set(config.rss_source_ids)) insert.run(sourceId);
+        this.db.query('UPDATE rss_sources SET ai_translation_enabled = 0').run();
+        const update = this.db.query('UPDATE rss_sources SET ai_translation_enabled = 1 WHERE id = ?');
+        for (const sourceId of new Set(config.rss_source_ids)) update.run(sourceId);
       }
     });
     transaction();
     return this.getAITranslationConfig();
+  }
+
+  recordAITranslationUsage(promptTokens: number, completionTokens: number, totalTokens: number): void {
+    this.db.query(`
+      UPDATE ai_translation_config
+      SET prompt_tokens = prompt_tokens + ?, completion_tokens = completion_tokens + ?, total_tokens = total_tokens + ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = 1
+    `).run(promptTokens || 0, completionTokens || 0, totalTokens || 0);
+    this.queryCache.clear();
   }
 
   // 数据库初始化检查：只要用户存在即视为已初始化
@@ -908,6 +975,9 @@ export class DatabaseService {
     today_posts: number;
     last_update: string | null;
     database_size_mb: number;
+    ai_prompt_tokens: number;
+    ai_completion_tokens: number;
+    ai_total_tokens: number;
   } {
     try {
       const totalPosts = this.getPostsCount();
@@ -918,6 +988,7 @@ export class DatabaseService {
       const todayPosts = this.getTodayPostsCount();
       const lastUpdate = this.getLastUpdateTime();
       const databaseSizeMb = this.getDatabaseSizeMb();
+      const aiConfig = this.getAITranslationConfig();
 
       return {
         total_posts: totalPosts,
@@ -927,7 +998,10 @@ export class DatabaseService {
         today_pushed: todayPushed,
         today_posts: todayPosts,
         last_update: lastUpdate,
-        database_size_mb: databaseSizeMb
+        database_size_mb: databaseSizeMb,
+        ai_prompt_tokens: aiConfig.prompt_tokens || 0,
+        ai_completion_tokens: aiConfig.completion_tokens || 0,
+        ai_total_tokens: aiConfig.total_tokens || 0
       };
     } catch (error) {
       logger.error('获取综合统计信息失败:', error);
@@ -939,7 +1013,10 @@ export class DatabaseService {
         today_pushed: 0,
         today_posts: 0,
         last_update: null,
-        database_size_mb: 0
+        database_size_mb: 0,
+        ai_prompt_tokens: 0,
+        ai_completion_tokens: 0,
+        ai_total_tokens: 0
       };
     }
   }

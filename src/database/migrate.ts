@@ -30,7 +30,7 @@ export class DatabaseMigrator {
       `).all().map((row: any) => row.filename);
 
       // 读取迁移文件
-      const migrationFiles = ['001_initial.sql', '002_add_rss_config.sql', '003_add_telegram_mode.sql', '004_add_feishu_config.sql', '005_add_keyword_strict_flags.sql', '006_add_rss_sources.sql', '007_add_ai_translation.sql', '008_add_rss_subscription_toggle.sql', '009_add_post_link.sql'];
+      const migrationFiles = ['001_initial.sql', '002_add_rss_config.sql', '003_add_telegram_mode.sql', '004_add_feishu_config.sql', '005_add_keyword_strict_flags.sql', '006_add_rss_sources.sql', '007_add_ai_translation.sql', '008_add_rss_subscription_toggle.sql', '009_add_post_link.sql', '010_add_multi_source_and_ai_usage.sql'];
       const migrationsDirectory = join(process.cwd(), 'src', 'database', 'migrations');
 
       for (const filename of migrationFiles) {

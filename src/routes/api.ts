@@ -51,6 +51,10 @@ const rssSourceSchema = z.object({
         z.number().int().min(0).max(1),
         z.boolean().transform(value => value ? 1 : 0),
     ]).default(1),
+    ai_translation_enabled: z.union([
+        z.number().int().min(0).max(1),
+        z.boolean().transform(value => value ? 1 : 0),
+    ]).default(0),
 });
 
 const rssSourceUpdateSchema = rssSourceSchema.partial();
@@ -86,7 +90,8 @@ apiRoutes.get('/posts', createQueryValidationMiddleware(paginationSchema), async
                 creator: query.creator,
                 category: query.category,
                 search: query.search,
-                subId: query.subId
+                subId: query.subId,
+                rssSourceId: query.rssSourceId
             }
         );
 
@@ -110,6 +115,15 @@ apiRoutes.get('/stats/charts', async (c) => {
         return c.json(createSuccessResponse({ hourly: last24hStats, category: categoryStats }));
     } catch (error) {
         return c.json(createErrorResponse(`获取图表数据失败: ${error}`), 500);
+    }
+});
+
+apiRoutes.get('/rss/sources/public', async (c) => {
+    try {
+        const dbService = c.get('dbService');
+        return c.json(createSuccessResponse(dbService.getAllRSSSources(true).map(({ id, name, enabled }) => ({ id, name, enabled }))));
+    } catch (error) {
+        return c.json(createErrorResponse(`获取 RSS 来源失败: ${error}`), 500);
     }
 });
 
@@ -200,7 +214,8 @@ apiRoutes.post('/subscriptions', createValidationMiddleware(keywordSubSchema), a
         const validatedData = c.get('validatedData');
         const dbService = c.get('dbService');
 
-        if (validatedData.rss_source_id && !dbService.getRSSSourceById(validatedData.rss_source_id)) {
+        const sourceIds = validatedData.rss_source_ids || (validatedData.rss_source_id ? [validatedData.rss_source_id] : []);
+        if (sourceIds.some((id: number) => !dbService.getRSSSourceById(id))) {
             return c.json(createErrorResponse('RSS 源不存在'), 400);
         }
 
@@ -222,7 +237,8 @@ apiRoutes.put('/subscriptions/:id',
             const validatedData = c.get('validatedData');
             const dbService = c.get('dbService');
 
-            if (validatedData.rss_source_id && !dbService.getRSSSourceById(validatedData.rss_source_id)) {
+            const sourceIds = validatedData.rss_source_ids || (validatedData.rss_source_id ? [validatedData.rss_source_id] : []);
+            if (sourceIds.some((sourceId: number) => !dbService.getRSSSourceById(sourceId))) {
                 return c.json(createErrorResponse('RSS 源不存在'), 400);
             }
 
@@ -640,6 +656,7 @@ apiRoutes.put('/ai-translation/config', createValidationMiddleware(aiTranslation
 apiRoutes.post('/ai-translation/test', createValidationMiddleware(aiTranslationSchema), async (c) => {
     try {
         const dbService = c.get('dbService');
+        const baseConfig = dbService.getBaseConfig();
         const stored = dbService.getAITranslationConfig();
         const data = c.get('validatedData');
         const config = {
@@ -648,10 +665,51 @@ apiRoutes.post('/ai-translation/test', createValidationMiddleware(aiTranslationS
             api_key: data.api_key || stored.api_key,
         };
         if (!config.api_url || !config.model) return c.json(createErrorResponse('请填写 API URL 和模型'), 400);
+        if (!config.rss_source_ids || config.rss_source_ids.length === 0) return c.json(createErrorResponse('请选择至少一个 RSS 来源'), 400);
+        if (!baseConfig?.feishu_app_id || !baseConfig.feishu_app_secret || !baseConfig.feishu_chat_id) {
+            return c.json(createErrorResponse('请先完成飞书配置并发送 /start 绑定会话'), 400);
+        }
 
-        const translated = await new AITranslationService(dbService).testConfig(config);
-        if (!translated) return c.json(createErrorResponse('模型调用失败，请检查 URL、API Key、模型和提示词'), 400);
-        return c.json(createSuccessResponse(translated, 'AI 翻译测试成功'));
+        const rssService = new RSSService(dbService);
+        const aiService = new AITranslationService(dbService);
+        let sampledPost = null;
+        const fetchErrors: string[] = [];
+        for (const sourceId of config.rss_source_ids) {
+            const source = dbService.getRSSSourceById(sourceId);
+            if (!source) continue;
+            try {
+                const items = await rssService.fetchAndParseRSS(source);
+                for (const item of items) {
+                    sampledPost = rssService.parseRSSItem(item, source.id!);
+                    if (sampledPost) break;
+                }
+            } catch (error) {
+                fetchErrors.push(`${source.name}: ${error instanceof Error ? error.message : String(error)}`);
+            }
+            if (sampledPost) break;
+        }
+        if (!sampledPost) {
+            const detail = fetchErrors.length > 0 ? `，${fetchErrors.join('；')}` : '';
+            return c.json(createErrorResponse(`选定 RSS 来源没有可用于测试的文章${detail}`), 400);
+        }
+
+        let translated;
+        try {
+            translated = await aiService.translateWithConfig({ ...sampledPost, push_status: 0 }, config);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            return c.json(createErrorResponse(`AI 翻译失败: ${message}`), 400);
+        }
+
+        const feishuService = new FeishuService(dbService, baseConfig.feishu_app_id, baseConfig.feishu_app_secret);
+        const link = sampledPost.link || `https://www.nodeseek.com/post-${sampledPost.post_id}-1`;
+        const sent = await feishuService.sendMessage(
+            baseConfig.feishu_chat_id,
+            `AI 翻译测试成功\n\n${translated.title}\n\n${translated.content}\n${link}`,
+        );
+        if (!sent) return c.json(createErrorResponse('AI 翻译成功，但飞书测试消息发送失败'), 400);
+
+        return c.json(createSuccessResponse({ original: sampledPost, translated }, 'AI 翻译测试成功，已推送到飞书'));
     } catch (error) {
         return c.json(createErrorResponse(`AI 翻译测试失败: ${error}`), 500);
     }

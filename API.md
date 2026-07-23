@@ -419,11 +419,15 @@ NodeSeeker 使用飞书官方 SDK 的 WebSocket 长连接接收 `im.message.rece
 
 RSS 来源的 `subscription_enabled` 控制是否启用关键词订阅：`1` 表示按订阅关键词命中后推送，`0` 表示该来源新内容抓取后直接进入飞书推送流程。
 
+RSS 来源的 `ai_translation_enabled` 控制推送前是否调用 AI 翻译。订阅的 `rss_source_ids` 可包含多个来源 ID；空数组表示全部来源。文章列表支持使用 `rssSourceId` 查询参数按来源过滤。
+
 ## AI 翻译
 
 - `GET /api/ai-translation/config`：获取脱敏后的 AI 翻译配置和 RSS 来源列表。
-- `PUT /api/ai-translation/config`：保存启用状态、Chat Completions API URL、API Key、模型、提示词和 `rss_source_ids`。
-- `POST /api/ai-translation/test`：使用当前表单配置执行一次测试翻译，不保存配置。
+- `PUT /api/ai-translation/config`：保存 Chat Completions API URL、API Key、模型和提示词；来源开关通过 RSS 来源配置管理。
+- `POST /api/ai-translation/test`：从已开启 AI 翻译的 RSS 来源抓取一篇文章，使用当前表单配置翻译并发送到已绑定飞书会话；不保存文章、推送状态或表单配置。
+
+统计接口会返回 `ai_prompt_tokens`、`ai_completion_tokens` 和 `ai_total_tokens`。
 
 ### 获取应用状态
 ```http

@@ -53,6 +53,7 @@ export const keywordSubSchema = z.object({
     keyword2_strict: z.union([z.number().int().min(0).max(1), z.boolean().transform(val => val ? 1 : 0)]).optional(),
     keyword3_strict: z.union([z.number().int().min(0).max(1), z.boolean().transform(val => val ? 1 : 0)]).optional(),
     rss_source_id: z.coerce.number().int().positive().optional(),
+    rss_source_ids: z.array(z.coerce.number().int().positive()).optional(),
     creator: z.string().max(100, '创建者不能超过100个字符').optional(),
     category: z.string().max(100, '分类不能超过100个字符').optional(),
 }).refine(
@@ -71,6 +72,7 @@ export const keywordSubUpdateSchema = z.object({
     keyword2_strict: z.union([z.number().int().min(0).max(1), z.boolean().transform(val => val ? 1 : 0)]).optional(),
     keyword3_strict: z.union([z.number().int().min(0).max(1), z.boolean().transform(val => val ? 1 : 0)]).optional(),
     rss_source_id: z.coerce.number().int().positive().nullable().optional(),
+    rss_source_ids: z.array(z.coerce.number().int().positive()).optional(),
     creator: z.string().max(100).optional(),
     category: z.string().max(100).optional(),
 });
@@ -102,6 +104,7 @@ export const paginationSchema = z.object({
     category: z.string().max(100).optional(),
     search: z.string().max(200).optional(),
     subId: z.coerce.number().int().positive().optional(),
+    rssSourceId: z.coerce.number().int().positive().optional(),
 });
 
 // ID 参数验证 Schema

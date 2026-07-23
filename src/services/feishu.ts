@@ -313,7 +313,7 @@ export class FeishuService {
                 })
                 .filter(Boolean)
                 .join(' + ');
-            const source = sub.rss_source_name ? `  来源:${sub.rss_source_name}` : '  来源:全部';
+            const source = sub.rss_source_names?.length ? `  来源:${sub.rss_source_names.join('、')}` : '  来源:全部';
             return `${index + 1}. ID:${sub.id}  ${keywords || sub.creator || sub.category}${source}`;
         });
         return `当前订阅列表：\n\n${lines.join('\n')}\n\n使用 /del 订阅ID 删除。`;
@@ -362,7 +362,7 @@ export class FeishuService {
 
     private addSourceSubscription(keywords: string[], strict: number[], sourceId: number): void {
         const exists = this.dbService.getAllKeywordSubs().some((sub) =>
-            (!sub.rss_source_id || sub.rss_source_id === sourceId)
+            this.subscriptionCoversSource(sub, sourceId)
             && [sub.keyword1, sub.keyword2, sub.keyword3].every((keyword, index) => (keyword || '') === (keywords[index] || ''))
             && [sub.keyword1_strict, sub.keyword2_strict, sub.keyword3_strict].every((value, index) => (value || 0) === (strict[index] || 0))
         );
@@ -375,19 +375,28 @@ export class FeishuService {
             keyword1_strict: strict[0] || 0,
             keyword2_strict: strict[1] || 0,
             keyword3_strict: strict[2] || 0,
-            rss_source_id: sourceId,
+            rss_source_ids: [sourceId],
         });
+    }
+
+    private getSubscriptionSourceIds(sub: KeywordSub): number[] {
+        return sub.rss_source_ids?.length ? sub.rss_source_ids : (sub.rss_source_id ? [sub.rss_source_id] : []);
+    }
+
+    private subscriptionCoversSource(sub: KeywordSub, sourceId: number): boolean {
+        const sourceIds = this.getSubscriptionSourceIds(sub);
+        return sourceIds.length === 0 || sourceIds.includes(sourceId);
     }
 
     private removeKeywordFromSource(keyword: string, sourceId: number): void {
         const normalized = keyword.toLowerCase();
         const subscriptions = this.dbService.getAllKeywordSubs().filter((sub) =>
-            (!sub.rss_source_id || sub.rss_source_id === sourceId)
+            this.subscriptionCoversSource(sub, sourceId)
             && [sub.keyword1, sub.keyword2, sub.keyword3].some((value) => value?.toLowerCase() === normalized)
         );
 
         for (const sub of subscriptions) {
-            if (!sub.rss_source_id) {
+            if (this.getSubscriptionSourceIds(sub).length === 0) {
                 this.dbService.deleteKeywordSub(sub.id!);
                 for (const source of this.dbService.getAllRSSSources(true)) {
                     const removeFromSource = source.id === sourceId;
@@ -435,10 +444,11 @@ export class FeishuService {
             keyword3_strict: remaining[2]?.strict || 0,
             creator: sub.creator,
             category: sub.category,
-            rss_source_id: sourceId,
+            rss_source_ids: [sourceId],
         };
         const exists = this.dbService.getAllKeywordSubs().some((existing) =>
-            existing.rss_source_id === sourceId
+            this.getSubscriptionSourceIds(existing).length === 1
+            && this.getSubscriptionSourceIds(existing)[0] === sourceId
             && [existing.keyword1, existing.keyword2, existing.keyword3]
                 .every((value, index) => (value || '') === ([copy.keyword1, copy.keyword2, copy.keyword3][index] || ''))
             && (existing.creator || '') === (copy.creator || '')
@@ -451,10 +461,10 @@ export class FeishuService {
         const normalized = keyword.toLowerCase();
         const subscriptions = this.dbService.getAllKeywordSubs().filter((sub) =>
             [sub.keyword1, sub.keyword2, sub.keyword3].some((value) => value?.toLowerCase() === normalized));
-        if (subscriptions.some((sub) => !sub.rss_source_id)) {
+        if (subscriptions.some((sub) => this.getSubscriptionSourceIds(sub).length === 0)) {
             return new Set(this.dbService.getAllRSSSources(true).map((source) => source.id!));
         }
-        return new Set(subscriptions.map((sub) => sub.rss_source_id!).filter(Boolean));
+        return new Set(subscriptions.flatMap((sub) => this.getSubscriptionSourceIds(sub)));
     }
 
     private buildAddSourceCard(keywords: string[], strict: number[]): FeishuCard {
@@ -464,9 +474,9 @@ export class FeishuService {
                 .every((keyword, index) => (keyword || '') === (keywords[index] || ''))
                 && [sub.keyword1_strict, sub.keyword2_strict, sub.keyword3_strict]
                     .every((value, index) => (value || 0) === (strict[index] || 0)));
-        const selected = matchingSubscriptions.some((sub) => !sub.rss_source_id)
+        const selected = matchingSubscriptions.some((sub) => this.getSubscriptionSourceIds(sub).length === 0)
             ? new Set(sources.map((source) => source.id!))
-            : new Set(matchingSubscriptions.map((sub) => sub.rss_source_id).filter((id): id is number => !!id));
+            : new Set(matchingSubscriptions.flatMap((sub) => this.getSubscriptionSourceIds(sub)));
         const description = keywords.map((keyword, index) => `${keyword}${strict[index] ? ' [严格]' : ''}`).join(' + ');
         return this.buildSourceCard('选择 RSS 来源', `关键词：**${description}**\n\n点击一个或多个来源应用监控。`, sources, (source) => ({
             text: selected.has(source.id!) ? `已应用 · ${source.name}` : source.name,
