@@ -192,8 +192,8 @@ export class DatabaseService {
   // 文章相关操作
   createPost(post: Omit<Post, 'id' | 'created_at'>): Post {
     const stmt = this.db.query(`
-      INSERT INTO posts (post_id, title, memo, category, creator, push_status, sub_id, rss_source_id, pub_date, push_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO posts (post_id, title, memo, category, creator, push_status, sub_id, rss_source_id, link, pub_date, push_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *
     `);
 
@@ -206,6 +206,7 @@ export class DatabaseService {
       post.push_status,
       post.sub_id || null,
       post.rss_source_id || null,
+      post.link || null,
       post.pub_date,
       post.push_date || null
     ) as Post;
@@ -226,8 +227,8 @@ export class DatabaseService {
     }
 
     const stmt = this.db.query(`
-      INSERT INTO posts (post_id, title, memo, category, creator, push_status, sub_id, rss_source_id, pub_date, push_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO posts (post_id, title, memo, category, creator, push_status, sub_id, rss_source_id, link, pub_date, push_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     // 使用事务进行批量插入
@@ -244,6 +245,7 @@ export class DatabaseService {
             post.push_status,
             post.sub_id || null,
             post.rss_source_id || null,
+            post.link || null,
             post.pub_date,
             post.push_date || null
           );

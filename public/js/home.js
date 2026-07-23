@@ -306,6 +306,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const isPushed = post.push_status === 3;
     const showStatus = isMatchedNotPushed || isPushed;
     const statusClass = isPushed ? "matched" : isMatchedNotPushed ? "matched-not-pushed" : "";
+    const postLink = post.link || `https://www.nodeseek.com/post-${post.post_id}-1`;
 
     // 判断分类和作者是否匹配
     const isCategoryMatched = post.sub_category && post.sub_category === post.category;
@@ -328,7 +329,7 @@ document.addEventListener("DOMContentLoaded", function () {
     el.innerHTML = `
       <div class="post-header">
         <h3 class="post-title">
-          <a href="https://www.nodeseek.com/post-${post.post_id}-1" target="_blank" rel="noopener">
+          <a href="${escapeAttr(postLink)}" target="_blank" rel="noopener">
             ${escapeHtml(post.title)}
           </a>
         </h3>

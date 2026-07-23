@@ -4,23 +4,52 @@
 [![GHCR](https://img.shields.io/badge/GHCR-nodeseeker-blue)](https://github.com/PlanetSider/nodeseeker/pkgs/container/nodeseeker)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-NodeSeek 社区 RSS 监控与飞书推送服务。项目基于 Bun、Hono 和 SQLite，提供 Web 控制台、关键词订阅、自动抓取、飞书机器人命令和多架构容器镜像。
+NodeSeeker 是一个 RSS 监控与飞书推送服务。它支持同时管理多个命名 RSS 来源，通过关键词订阅或全量更新模式决定推送内容，并可在发送飞书消息前调用 OpenAI 兼容接口翻译文章。
 
-## 功能
+项目使用 Bun、Hono、SQLite 和飞书官方 Node SDK，提供完整 Web 管理界面和 `linux/amd64`、`linux/arm64` 容器镜像。
 
-- 定时抓取 NodeSeek RSS，可配置抓取间隔和 HTTP/HTTPS 代理
-- 按关键词、严格关键词、正则表达式、作者和分类匹配文章
-- 将匹配结果主动推送至飞书私聊或群聊
-- 通过飞书命令添加、查看和删除订阅
-- Web 控制台管理订阅、RSS、飞书和推送状态
-- SQLite 数据持久化
-- GitHub Actions 自动测试并发布 `linux/amd64`、`linux/arm64` 镜像
+## 主要功能
+
+- 管理多个带自定义名称的 RSS 来源
+- 支持 NodeSeek、LowEndTalk 以及标准 RSS 2.0 来源
+- 每个 RSS 来源可独立启用、停用和手动抓取
+- 每个来源可选择关键词订阅模式或新内容直接推送模式
+- 按关键词、严格关键词、正则表达式、作者和分类过滤
+- 订阅可限定到指定 RSS 来源；未指定来源时匹配全部来源
+- 飞书 WebSocket 长连接，无需公网 webhook
+- 飞书交互卡片选择一个或多个 RSS 来源添加、取消关键词监控
+- OpenAI 兼容 Chat Completions 翻译标题和正文
+- AI 翻译可限定到一个或多个 RSS 来源
+- 模型调用失败时自动回退原文推送
+- SQLite 数据持久化、统计、文章筛选和旧数据清理
+- GitHub Actions 自动测试并发布多架构 GHCR 镜像
+
+## 推送规则
+
+每个 RSS 来源包含两个独立开关：
+
+| 开关 | 作用 |
+|------|------|
+| 启用 | 控制定时任务是否抓取该 RSS 来源 |
+| 开启订阅 | 开启时仅推送命中关键词的文章；关闭时直接推送该来源抓取到的新文章 |
+
+处理流程：
+
+```text
+RSS 抓取
+  -> 新文章入库
+  -> 来源开启订阅？
+     -> 是：匹配关键词、作者和分类
+     -> 否：直接进入推送流程
+  -> 来源启用 AI 翻译？
+     -> 是：翻译标题和正文
+     -> 否或翻译失败：使用原文
+  -> 飞书推送
+```
 
 ## 快速部署
 
 ### Docker Compose
-
-推荐直接使用 GHCR 已构建镜像：
 
 ```bash
 git clone https://github.com/PlanetSider/nodeseeker.git
@@ -29,7 +58,21 @@ docker compose pull
 docker compose up -d
 ```
 
-访问 `http://localhost:3010` 创建管理员账户。
+打开 `http://localhost:3010`，首次访问时创建管理员账户。
+
+默认镜像：
+
+```text
+ghcr.io/planetsider/nodeseeker:latest
+```
+
+如需固定版本，修改 `docker-compose.yml`：
+
+```yaml
+services:
+  nodeseeker:
+    image: ghcr.io/planetsider/nodeseeker:v1.5
+```
 
 常用命令：
 
@@ -40,29 +83,19 @@ docker compose ps
 # 查看日志
 docker compose logs -f nodeseeker
 
-# 更新到最新镜像
+# 拉取并应用更新
 docker compose pull
 docker compose up -d
 
-# 停止服务，保留 ./data 和 ./logs
+# 停止服务，保留数据
 docker compose down
-```
-
-默认使用镜像：
-
-```text
-ghcr.io/planetsider/nodeseeker:latest
-```
-
-部署固定版本时，直接修改 `docker-compose.yml` 中的镜像标签：
-
-```yaml
-image: ghcr.io/planetsider/nodeseeker:v1.0
 ```
 
 ### Docker Run
 
 ```bash
+mkdir -p data logs
+
 docker run -d \
   --name nodeseeker \
   --restart unless-stopped \
@@ -72,148 +105,185 @@ docker run -d \
   ghcr.io/planetsider/nodeseeker:latest
 ```
 
-## 从源码构建
-
-### Compose 构建
-
-`docker-compose.build.yml` 会覆盖默认镜像配置，使用仓库中的 `Dockerfile` 构建本地镜像：
-
-```bash
-git clone https://github.com/PlanetSider/nodeseeker.git
-cd nodeseeker
-
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.build.yml \
-  up -d --build
-```
-
-强制重新构建：
-
-```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.build.yml \
-  build --no-cache
-
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.build.yml \
-  up -d
-```
-
-### Docker Build
-
-```bash
-docker build -t nodeseeker:local .
-
-docker run -d \
-  --name nodeseeker \
-  --restart unless-stopped \
-  -p 3010:3010 \
-  -v "$PWD/data:/usr/src/app/data" \
-  -v "$PWD/logs:/usr/src/app/logs" \
-  nodeseeker:local
-```
-
 ## Compose 配置
 
-项目不再提供或读取 `.env` 文件。`docker-compose.yml` 使用固定默认值，数据通过相对目录绑定到宿主机。
+项目不依赖 `.env` 文件。容器运行参数直接配置在 `docker-compose.yml` 中，业务配置保存在 SQLite 数据库中。
 
-| 配置 | 默认值 | 修改方式 |
-|------|--------|----------|
-| 镜像 | `ghcr.io/planetsider/nodeseeker:latest` | 修改 `docker-compose.yml` 的 `image` |
-| 端口 | `3010:3010` | 修改 `docker-compose.yml` 的 `ports` |
-| CORS | `http://localhost:3010` | 修改 `environment.CORS_ORIGINS` |
-| RSS 超时 | `10000` | 修改 `environment.RSS_TIMEOUT` |
-| RSS 定时任务 | `true` | 修改 `environment.RSS_CHECK_ENABLED` |
-| 日志级别 | `info` | 修改 `environment.LOG_LEVEL` |
+| 环境变量 | 默认值 | 说明 |
+|----------|--------|------|
+| `NODE_ENV` | `production` | 运行环境 |
+| `PORT` | `3010` | HTTP 服务端口 |
+| `HOST` | `0.0.0.0` | 监听地址 |
+| `DATABASE_PATH` | `/usr/src/app/data/nodeseeker.db` | SQLite 数据库路径 |
+| `CORS_ORIGINS` | `http://localhost:3010` | 允许访问的 Web 来源 |
+| `RSS_TIMEOUT` | `10000` | RSS 请求超时，单位毫秒 |
+| `RSS_CHECK_ENABLED` | `true` | 是否启动 RSS 定时任务 |
+| `LOG_LEVEL` | `info` | `debug`、`info`、`warn`、`error` 或 `silent` |
 
-目录映射：
+持久化目录：
 
-| 宿主机目录 | 容器目录 | 用途 |
-|------------|----------|------|
-| `./data` | `/usr/src/app/data` | SQLite 数据库 |
+| 宿主机 | 容器 | 内容 |
+|--------|------|------|
+| `./data` | `/usr/src/app/data` | SQLite 数据库和业务配置 |
 | `./logs` | `/usr/src/app/logs` | 应用日志 |
 
-飞书凭据、RSS 地址、抓取间隔和代理保存在 SQLite 中，应通过 Web 控制台配置。
+RSS 来源、关键词订阅、飞书凭据和 AI API Key 均保存在 SQLite 中。请限制 `data` 目录访问权限并定期备份。
+
+## 初始配置
+
+登录 Web 控制台后，建议按以下顺序配置：
+
+1. 在「RSS 配置」中添加来源名称和 RSS URL。
+2. 按来源选择是否启用抓取以及是否开启关键词订阅。
+3. 在「订阅管理」中添加关键词、作者或分类条件。
+4. 在「飞书配置」中填写 App ID 和 App Secret。
+5. 在飞书中向机器人发送 `/start` 绑定推送会话。
+6. 如需翻译，在「AI 翻译」中配置模型接口并选择 RSS 来源。
+
+现有单 RSS 配置升级后会自动迁移为名为 `NodeSeek` 的默认来源。
+
+## RSS 来源
+
+### 支持的标识格式
+
+NodeSeeker 会优先从常见论坛链接或 GUID 中提取文章 ID：
+
+- NodeSeek：`https://www.nodeseek.com/post-12345-1`
+- LowEndTalk：`https://lowendtalk.com/discussion/219421/topic-slug`
+- Vanilla GUID：`219421@/discussions`
+- 常见 URL 参数：`id`、`p`、`post`
+
+对于没有数字 ID 的 RSS，系统会根据 GUID、文章链接或标题生成稳定标识。文章原始链接会保存在数据库中，并用于 Web 列表和飞书推送。
+
+### 抓取策略
+
+- 所有启用来源共用一个抓取间隔和代理设置。
+- 定时任务逐个抓取启用的来源。
+- 可以在 Web 控制台手动抓取全部来源或单个来源。
+- 文章按“RSS 来源 + 文章 ID”判重，不同来源可以存在相同数字 ID。
+
+## 关键词订阅
+
+订阅支持以下条件：
+
+- 最多三个关键词，多个关键词之间为 AND 关系
+- 普通包含匹配
+- 严格匹配，不区分大小写且不匹配英文单词片段
+- `/pattern/i` 格式正则表达式
+- `regex:pattern` 格式正则表达式
+- 作者过滤
+- 分类过滤
+- 指定 RSS 来源或全部来源
+
+严格关键词 `nc` 可以匹配 `NC server`，不会匹配 `ncloud`。
 
 ## 飞书配置
 
-### 1. 创建应用
+### 创建应用
 
 1. 打开[飞书开放平台](https://open.feishu.cn/app)，创建企业自建应用。
 2. 启用机器人能力。
-3. 开通机器人发送消息、接收消息所需权限。
-4. 获取 `App ID` 和 `App Secret`。
+3. 开通机器人发送消息和接收消息所需权限。
+4. 获取 App ID 和 App Secret。
 
-### 2. 配置长连接事件订阅
+### 配置长连接
 
-NodeSeeker 使用飞书官方 SDK 的 WebSocket 长连接接收事件，不需要公网回调地址或内网穿透。
+NodeSeeker 使用飞书官方 SDK 的 WebSocket 长连接，不需要公网 IP、域名、HTTPS 回调地址或内网穿透。
 
-在飞书开放平台完成以下设置：
+在飞书开放平台中：
 
-1. 进入“事件与回调”，选择“使用长连接接收事件”。
-2. 添加事件 `im.message.receive_v1`。
-3. 发布应用版本，并确保目标用户可以使用该应用。
+1. 进入「事件与回调」。
+2. 选择「使用长连接接收事件」。
+3. 添加消息事件 `im.message.receive_v1`。
+4. 启用交互卡片回调 `card.action.trigger`。
+5. 发布应用版本，并确保目标用户可以使用该应用。
 
-### 3. 在 NodeSeeker 中绑定
+然后在 NodeSeeker 的「飞书配置」中保存 App ID 和 App Secret，并向机器人发送 `/start`。在群聊发送 `/start` 会绑定该群聊，在私聊发送会绑定当前私聊。
 
-1. 登录 NodeSeeker Web 控制台。
-2. 打开“飞书配置”。
-3. 填写 `App ID` 和 `App Secret`。
-4. 保存并测试连接。
-5. 在飞书中向机器人发送 `/start`，系统会绑定当前用户及会话。
-
-在群聊中执行 `/start` 时，后续文章会推送到该群聊；在机器人私聊中执行时，会推送到该私聊。
-
-## 飞书命令
+### 飞书命令
 
 | 命令 | 说明 |
 |------|------|
 | `/start` | 绑定当前用户和会话 |
 | `/getme` | 查看 Open ID、Chat ID 和绑定状态 |
-| `/list` | 查看订阅列表 |
-| `/add 关键词1 -y 关键词2` | 打开卡片，选择一个或多个 RSS 来源添加监控；`-y` 表示前一个关键词严格匹配 |
-| `/del 关键词` | 打开卡片，选择一个或多个当前监控的 RSS 来源并取消监控 |
+| `/list` | 查看订阅列表和来源 |
+| `/add 关键词1 -y 关键词2` | 打开来源选择卡片；可连续选择多个 RSS 来源 |
+| `/del 关键词` | 打开取消卡片；选择要停止监控的 RSS 来源 |
 | `/del 订阅ID` | 直接删除指定订阅，兼容旧用法 |
-| `/post` | 查看最近十条文章 |
-| `/clear 30d` | 清理 30 天以前的文章，也支持 `2m`、`30天`、`2月` |
+| `/post` | 查看最近十条文章及原始链接 |
+| `/clear 30d` | 清理指定时间以前的文章；也支持 `2m`、`30天`、`2月` |
 | `/stop` | 暂停文章推送 |
 | `/resume` | 恢复文章推送 |
 | `/unbind` | 解除绑定 |
-| `/help` | 查看命令帮助 |
+| `/help` | 查看帮助 |
 
-关键词支持普通文本和正则表达式：
+示例：
 
 ```text
 /add JavaScript React
 /add /javascript/i React
 /add regex:AI|人工智能 深度学习
 /add nc -y vps
+/del vps
 ```
 
-严格匹配不区分大小写，并且不会匹配较长英文单词中的片段。例如严格关键词 `nc` 可匹配 `NC server`，不会匹配 `ncloud`。
-
-Web 控制台的订阅管理支持为每个关键词单独开启或关闭严格匹配。RSS 来源管理支持为每个来源开启或关闭订阅：开启时按关键词命中后推送，关闭时该来源抓取到的新内容会直接推送。统计信息中会显示 SQLite 数据库大小，并可按天或月清理旧文章；清理不会删除订阅、账号或飞书配置。
+`-y` 表示前一个关键词使用严格匹配。卡片操作仅允许当前绑定的飞书用户执行。
 
 ## AI 翻译
 
-设置菜单中的「AI 翻译」页面支持配置 OpenAI 兼容的 Chat Completions API URL、API Key、模型和翻译提示词，并可选择一个或多个命名 RSS 来源。命中关键词的文章仅在来源被选中时翻译标题和正文，再将译文发送到飞书；模型调用失败时自动回退为原文推送。
+「AI 翻译」支持 OpenAI 兼容的 Chat Completions 接口，可配置：
 
-## 网络要求
+- 完整 API URL，例如 `https://api.openai.com/v1/chat/completions`
+- API Key，使用 `Authorization: Bearer <key>` 请求
+- 模型名称
+- 系统提示词
+- 一个或多个需要翻译的 RSS 来源
 
-飞书长连接只要求 NodeSeeker 运行环境可以主动访问公网飞书开放平台，不要求服务器提供公网 IP、域名或 HTTPS 回调地址。Web 控制台如需公网访问，可按自己的部署环境配置 Nginx、Caddy 或其他反向代理。
+只有进入飞书推送流程且来源被选中的文章才会调用模型。模型需要返回以下 JSON：
 
-## 本地开发
+```json
+{
+  "title": "翻译后的标题",
+  "content": "翻译后的正文"
+}
+```
 
-需要安装 Bun：
+页面中的「测试配置」会执行一次真实模型请求。AI 请求超时为 30 秒；请求失败或返回格式错误时，系统记录错误并继续推送原文。
+
+## 升级与迁移
+
+升级前建议先备份 `data` 目录：
 
 ```bash
+docker compose down
+tar czf nodeseeker-backup-$(date +%F).tar.gz data
+docker compose pull
+docker compose up -d
+```
+
+应用启动时会自动执行未运行的 SQLite 迁移。不要手动删除 `data/nodeseeker.db`，否则账号、订阅、文章和全部配置都会丢失。
+
+恢复备份：
+
+```bash
+docker compose down
+tar xzf nodeseeker-backup-YYYY-MM-DD.tar.gz
+docker compose up -d
+```
+
+## 从源码运行
+
+需要安装 [Bun](https://bun.sh/)：
+
+```bash
+git clone https://github.com/PlanetSider/nodeseeker.git
+cd nodeseeker
 bun install --frozen-lockfile
 bun run db:migrate
 bun run dev
 ```
+
+默认访问地址为 `http://localhost:3010`。
 
 验证代码：
 
@@ -222,21 +292,41 @@ bun test
 bun run build
 ```
 
+生产构建：
+
+```bash
+bun run build
+bun run start
+```
+
+## 本地构建容器
+
+使用 Compose override：
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.build.yml \
+  up -d --build
+```
+
+强制无缓存构建：
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.build.yml \
+  build --no-cache
+```
+
 ## GitHub 自动构建
 
 工作流位于 `.github/workflows/docker-build.yml`：
 
-- 推送到 `main`：测试并发布 `latest` 和 commit SHA 标签
-- 推送 `v*` 标签：测试并发布对应版本标签
+- 推送到 `main`：运行测试、生产构建，并发布 `latest` 和 commit SHA 镜像
+- 推送 `v*` 标签：运行测试、生产构建，并发布版本镜像
 - Pull Request：只测试和构建，不推送镜像
-- 支持手动运行 `workflow_dispatch`
-
-发布新版本示例：
-
-```bash
-git tag -a v1.1.0 -m "Release v1.1.0"
-git push origin v1.1.0
-```
+- 镜像平台：`linux/amd64`、`linux/arm64`
 
 镜像地址：
 
@@ -244,37 +334,19 @@ git push origin v1.1.0
 ghcr.io/planetsider/nodeseeker
 ```
 
-## 数据备份
-
-备份数据目录：
-
-```bash
-tar czf nodeseeker-backup.tar.gz data
-```
-
-恢复前请先执行 `docker compose down`：
-
-```bash
-tar xzf nodeseeker-backup.tar.gz
-```
-
-删除 `./data` 会永久删除数据库：
-
-```bash
-docker compose down
-rm -rf data logs
-```
-
 ## 故障排查
 
 | 问题 | 检查项 |
 |------|--------|
-| 容器无法启动 | 执行 `docker compose logs nodeseeker` 查看迁移或端口错误 |
-| 页面无法访问 | 检查 `docker compose ps`、端口映射和服务器防火墙 |
-| 飞书长连接未连接 | 检查 App ID、App Secret、容器公网访问能力和飞书事件订阅方式 |
-| 飞书机器人无回复 | 检查应用版本是否发布、权限、长连接模式和 `im.message.receive_v1` 事件 |
-| 飞书无法推送 | 先发送 `/start` 绑定会话，并检查应用发送消息权限 |
-| RSS 抓取失败 | 检查 RSS 地址、代理和容器网络 |
+| 容器无法启动 | 使用 `docker compose logs nodeseeker` 检查迁移、数据库权限和端口占用 |
+| 页面无法访问 | 检查 `docker compose ps`、`3010` 端口和服务器防火墙 |
+| RSS 抓取失败 | 检查来源 URL、代理、DNS、TLS 和 `RSS_TIMEOUT` |
+| 日志提示无法提取文章 ID | 确认使用最新版本；通用 RSS 会根据 GUID 或链接生成稳定标识 |
+| 文章重复推送 | 检查来源 URL 是否重复添加，以及数据库目录是否正确持久化 |
+| 飞书长连接失败 | 检查 App ID、App Secret、网络访问和长连接接收模式 |
+| 飞书机器人不响应 | 检查应用是否发布、消息事件、卡片回调和机器人权限 |
+| 飞书没有收到文章 | 先发送 `/start`，再检查来源启用状态、订阅模式和 `/stop` 状态 |
+| AI 翻译失败 | 使用页面测试按钮检查完整 API URL、Key、模型和返回 JSON 格式 |
 
 健康检查：
 
@@ -282,10 +354,26 @@ rm -rf data logs
 curl http://localhost:3010/health
 ```
 
+## 项目结构
+
+```text
+src/
+├── components/       Web 页面组件
+├── config/           环境、数据库和服务配置
+├── database/         SQLite 迁移
+├── routes/           Hono API 路由
+├── services/         RSS、匹配、飞书、AI 和数据库服务
+├── types/            TypeScript 类型
+└── utils/            校验、日志和通用工具
+public/               Web 静态资源
+data/                 SQLite 数据目录
+logs/                 日志目录
+```
+
 ## 文档
 
-- [Docker 部署说明](docs/Docker.md)
 - [API 文档](API.md)
+- [Docker 部署说明](docs/Docker.md)
 
 ## License
 

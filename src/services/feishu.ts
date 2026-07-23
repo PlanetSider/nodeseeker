@@ -162,7 +162,8 @@ export class FeishuService {
         const postContent = translated
             ? `${translated.title}\n\n${translated.content}`
             : post.title;
-        const text = `${details}\n\n${postContent}\nhttps://www.nodeseek.com/post-${post.post_id}-1`;
+        const link = post.link || `https://www.nodeseek.com/post-${post.post_id}-1`;
+        const text = `${details}\n\n${postContent}\n${link}`;
         const success = await this.sendMessage(config.feishu_chat_id, text);
 
         if (success) {
@@ -528,7 +529,7 @@ export class FeishuService {
     private listRecentPosts(): string {
         const posts = this.dbService.getRecentPosts(10);
         if (posts.length === 0) return '暂无文章数据。';
-        return `最近 10 条文章：\n\n${posts.map((post, index) => `${index + 1}. ${post.title}\nhttps://www.nodeseek.com/post-${post.post_id}-1`).join('\n')}`;
+        return `最近 10 条文章：\n\n${posts.map((post, index) => `${index + 1}. ${post.title}\n${post.link || `https://www.nodeseek.com/post-${post.post_id}-1`}`).join('\n')}`;
     }
 
     private clearPosts(args: string[]): string {

@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { DatabaseService } from "./database";
 import { getEnvConfig } from "../config/env";
 import { logger } from "../utils/logger";
@@ -202,26 +203,42 @@ export class RSSService {
     }
   }
 
+  private hashPostIdentifier(value: string): number {
+    return parseInt(createHash("sha256").update(value).digest("hex").slice(0, 13), 16) || 1;
+  }
+
   /**
-   * 从链接中提取 post_id
+   * 从 RSS 条目中提取稳定文章 ID。
+   * 优先使用常见论坛 URL/GUID 中的数字 ID，无法识别时回退到稳定哈希。
    */
-  private extractPostId(link: string): number | null {
+  private extractPostId(item: RSSItem): number | null {
     try {
+      const link = item.link || '';
+      const guid = this.extractCDATA(item.guid || '').trim();
+
       // NodeSeek 的链接格式通常是 https://www.nodeseek.com/post-{id}-1
       const match = link.match(/post-(\d+)-/);
       if (match && match[1]) {
         return parseInt(match[1], 10);
       }
 
+      // LowEndTalk / Vanilla 论坛：/discussion/{id}/slug，GUID: {id}@/discussions
+      const discussionMatch = link.match(/\/discussion\/(\d+)(?:\/|$)/i) || guid.match(/^(\d+)@\/discussions/i);
+      if (discussionMatch && discussionMatch[1]) {
+        return parseInt(discussionMatch[1], 10);
+      }
+
       // 备用方案：从 URL 参数中提取
       const url = new URL(link);
-      const id = url.searchParams.get("id");
+      const id = url.searchParams.get("id") || url.searchParams.get("p") || url.searchParams.get("post");
       if (id) {
         return parseInt(id, 10);
       }
 
-      return null;
+      return this.hashPostIdentifier(guid || link || item.title);
     } catch (error) {
+      const fallback = this.extractCDATA(item.guid || item.link || item.title || '').trim();
+      if (fallback) return this.hashPostIdentifier(fallback);
       logger.error("提取 post_id 失败:", error);
       return null;
     }
@@ -231,7 +248,7 @@ export class RSSService {
    * 清洗和格式化数据
    */
   private cleanAndFormatData(item: RSSItem, rssSourceId: number): ParsedPost | null {
-    const postId = this.extractPostId(item.link);
+    const postId = this.extractPostId(item);
     if (!postId) {
       logger.warn("无法提取 post_id:", item.link);
       return null;
@@ -273,6 +290,7 @@ export class RSSService {
       creator,
       pub_date: pubDate,
       rss_source_id: rssSourceId,
+      link: item.link,
     };
   }
 
