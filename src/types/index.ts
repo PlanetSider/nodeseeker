@@ -40,6 +40,9 @@ export interface KeywordSub {
   keyword1?: string;
   keyword2?: string;
   keyword3?: string;
+  keyword1_strict?: number;
+  keyword2_strict?: number;
+  keyword3_strict?: number;
   creator?: string;
   category?: string;
   created_at?: string;
@@ -127,7 +130,9 @@ export interface RSSProcessResult {
 // 数据清理结果接口
 export interface CleanupResult {
   deletedCount: number;
-  errors: string[];
+  cutoffDate: string;
+  databaseSizeBeforeMb: number;
+  databaseSizeAfterMb: number;
 }
 
 // 分页查询参数接口
@@ -159,6 +164,7 @@ export interface DatabaseStats {
   today_posts: number;        // 今日帖子数
   today_messages: number;
   last_update: string | null;
+  database_size_mb?: number;
 }
 
 // 飞书应用配置接口

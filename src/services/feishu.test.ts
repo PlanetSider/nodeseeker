@@ -82,4 +82,28 @@ describe('FeishuService', () => {
 
         expect(database.updateBaseConfig).toHaveBeenCalledTimes(1);
     });
+
+    it('supports strict keyword flag with /add -y', async () => {
+        const database = createDatabaseMock();
+        mockFeishuFetch();
+        database.config.feishu_user_open_id = 'ou_user';
+        const service = new FeishuService(database as any, 'app-id', 'app-secret');
+
+        await service.handleMessageEvent({
+            sender: { sender_id: { open_id: 'ou_user' } },
+            message: {
+                chat_id: 'oc_chat',
+                chat_type: 'p2p',
+                message_type: 'text',
+                content: JSON.stringify({ text: '/add nc -y vps' }),
+            },
+        }, 'strict-add-event');
+
+        expect(database.createKeywordSub).toHaveBeenCalledWith(expect.objectContaining({
+            keyword1: 'nc',
+            keyword1_strict: 1,
+            keyword2: 'vps',
+            keyword2_strict: 0,
+        }));
+    });
 });

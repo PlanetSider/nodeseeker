@@ -415,6 +415,8 @@ Authorization: Bearer <token>
 
 NodeSeeker 使用飞书官方 SDK 的 WebSocket 长连接接收 `im.message.receive_v1` 事件，不提供 webhook 接口。
 
+飞书 `/add` 命令支持在关键词后添加 `-y` 开启严格匹配，例如 `/add nc -y vps`。`/clear 30d` 或 `/clear 2m` 可清理指定时间以前的文章。
+
 ### 获取应用状态
 ```http
 GET /api/feishu/status

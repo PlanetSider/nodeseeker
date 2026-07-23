@@ -203,9 +203,15 @@ export const HomePage: FC = () => {
             {/* 第一行：关键词 */}
             <div class="sub-form-row">
               <div class="sub-keywords-inputs">
-                <input type="text" id="keyword1" class="input-field" placeholder="关键词1" />
-                <input type="text" id="keyword2" class="input-field" placeholder="关键词2" />
-                <input type="text" id="keyword3" class="input-field" placeholder="关键词3" />
+                {[1, 2, 3].map((index) => (
+                  <div class="keyword-input-group">
+                    <input type="text" id={`keyword${index}`} class="input-field" placeholder={`关键词${index}`} />
+                    <label class="strict-match-option">
+                      <input type="checkbox" id={`keyword${index}Strict`} />
+                      严格
+                    </label>
+                  </div>
+                ))}
               </div>
             </div>
             {/* 第二行：作者和分类 */}
@@ -408,6 +414,25 @@ export const HomePage: FC = () => {
             <div class="stat-card-simple">
               <span class="stat-value" id="drawerStatTotalPosts">0</span>
               <span class="stat-label">历史帖子</span>
+            </div>
+            <div class="stat-card-simple">
+              <span class="stat-value" id="drawerStatDatabaseSize">0 M</span>
+              <span class="stat-label">数据库大小</span>
+            </div>
+          </div>
+
+          <div class="form-card database-cleanup-card" style={{ marginTop: "16px" }}>
+            <h4 class="form-section-title">数据库清理</h4>
+            <div class="form-hint" style={{ marginBottom: "12px" }}>
+              删除指定时间以前的文章数据，不影响账号、订阅和飞书配置。
+            </div>
+            <div class="database-cleanup-form">
+              <input type="number" id="cleanupAmount" class="input-field" min="1" step="1" placeholder="数量" />
+              <select id="cleanupUnit" class="input-field">
+                <option value="days">天</option>
+                <option value="months">月</option>
+              </select>
+              <button type="button" id="cleanupDatabaseBtn" class="btn btn-danger">立即清理</button>
             </div>
           </div>
 

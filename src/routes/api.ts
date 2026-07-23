@@ -16,6 +16,7 @@ import {
     idParamSchema
 } from '../utils/validation';
 import type { ContextVariables } from '../types';
+import { getCleanupCutoffDate } from '../utils/cleanup';
 
 type Variables = ContextVariables & {
     authService: AuthService;
@@ -32,6 +33,11 @@ function createSafeConfig(config: any) {
         has_feishu_app_secret: !!feishu_app_secret,
     };
 }
+
+const cleanupSchema = z.object({
+    amount: z.coerce.number().int().positive('清理数量必须是正整数'),
+    unit: z.enum(['days', 'months'])
+});
 
 // 公开路由（无需认证）
 apiRoutes.get('/posts', createQueryValidationMiddleware(paginationSchema), async (c) => {
@@ -501,5 +507,18 @@ apiRoutes.post('/rss/test-connection', createValidationMiddleware(z.object({
         return c.json(createSuccessResponse(result, result.accessible ? 'RSS 源连接测试成功' : 'RSS 源连接测试失败'));
     } catch (error) {
         return c.json(createErrorResponse(`RSS 连接测试失败: ${error}`), 500);
+    }
+});
+
+apiRoutes.post('/stats/cleanup', createValidationMiddleware(cleanupSchema), async (c) => {
+    try {
+        const { amount, unit } = c.get('validatedData');
+        const dbService = c.get('dbService');
+        const cutoffDate = getCleanupCutoffDate(amount, unit);
+        const result = dbService.cleanupPostsBefore(cutoffDate);
+
+        return c.json(createSuccessResponse(result, `已清理 ${amount}${unit === 'days' ? '天' : '个月'}以前的数据`));
+    } catch (error) {
+        return c.json(createErrorResponse(`清理数据失败: ${error}`), 500);
     }
 });

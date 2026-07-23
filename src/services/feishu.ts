@@ -1,5 +1,6 @@
 import { DatabaseService } from './database';
 import { logger } from '../utils/logger';
+import { getCleanupCutoffDate, parseCleanupDuration } from '../utils/cleanup';
 import type { KeywordSub, Post } from '../types';
 
 interface FeishuApiResponse<T = unknown> {
@@ -197,6 +198,8 @@ export class FeishuService {
                 return this.deleteSubscription(args);
             case '/post':
                 return this.listRecentPosts();
+            case '/clear':
+                return this.clearPosts(args);
             default:
                 return `未知命令：${command}\n发送 /help 查看可用命令。`;
         }
@@ -206,21 +209,43 @@ export class FeishuService {
         const subscriptions = this.dbService.getAllKeywordSubs();
         if (subscriptions.length === 0) return '暂无订阅，使用 /add 关键词1 关键词2 添加。';
         const lines = subscriptions.map((sub, index) => {
-            const keywords = [sub.keyword1, sub.keyword2, sub.keyword3].filter(Boolean).join(' + ');
+            const keywords = [1, 2, 3]
+                .map((keywordIndex) => {
+                    const keyword = sub[`keyword${keywordIndex}` as keyof KeywordSub] as string | undefined;
+                    const strict = sub[`keyword${keywordIndex}_strict` as keyof KeywordSub] === 1;
+                    return keyword ? `${keyword}${strict ? ' [严格]' : ''}` : '';
+                })
+                .filter(Boolean)
+                .join(' + ');
             return `${index + 1}. ID:${sub.id}  ${keywords || sub.creator || sub.category}`;
         });
         return `当前订阅列表：\n\n${lines.join('\n')}\n\n使用 /del 订阅ID 删除。`;
     }
 
     private addSubscription(args: string[]): string {
-        if (args.length === 0) return '请提供关键词。用法：/add 关键词1 关键词2 关键词3';
+        if (args.length === 0) return '请提供关键词。用法：/add 关键词1 -y 关键词2';
         try {
+            const keywords: Array<{ value: string; strict: number }> = [];
+            for (const arg of args) {
+                if (arg.toLowerCase() === '-y') {
+                    if (keywords.length === 0) return '-y 必须跟在需要严格匹配的关键词后面。';
+                    keywords[keywords.length - 1].strict = 1;
+                    continue;
+                }
+                if (keywords.length < 3) keywords.push({ value: arg, strict: 0 });
+            }
+            if (keywords.length === 0) return '请提供关键词。用法：/add 关键词1 -y 关键词2';
+
             const sub = this.dbService.createKeywordSub({
-                keyword1: args[0],
-                keyword2: args[1],
-                keyword3: args[2],
+                keyword1: keywords[0]?.value,
+                keyword2: keywords[1]?.value,
+                keyword3: keywords[2]?.value,
+                keyword1_strict: keywords[0]?.strict || 0,
+                keyword2_strict: keywords[1]?.strict || 0,
+                keyword3_strict: keywords[2]?.strict || 0,
             });
-            return `订阅添加成功。ID:${sub.id}，关键词：${args.slice(0, 3).join(' + ')}`;
+            const description = keywords.map((keyword) => `${keyword.value}${keyword.strict ? ' [严格]' : ''}`).join(' + ');
+            return `订阅添加成功。ID:${sub.id}，关键词：${description}`;
         } catch (error) {
             return `添加订阅失败：${error}`;
         }
@@ -238,15 +263,30 @@ export class FeishuService {
         return `最近 10 条文章：\n\n${posts.map((post, index) => `${index + 1}. ${post.title}\nhttps://www.nodeseek.com/post-${post.post_id}-1`).join('\n')}`;
     }
 
+    private clearPosts(args: string[]): string {
+        const duration = parseCleanupDuration(args[0]);
+        if (!duration) return '用法：/clear 30d 或 /clear 2m（也支持 30天、2月）。';
+
+        try {
+            const result = this.dbService.cleanupPostsBefore(
+                getCleanupCutoffDate(duration.amount, duration.unit)
+            );
+            return `清理完成：删除 ${result.deletedCount} 条文章，数据库 ${result.databaseSizeBeforeMb.toFixed(2)} M → ${result.databaseSizeAfterMb.toFixed(2)} M。`;
+        } catch (error) {
+            return `清理失败：${error}`;
+        }
+    }
+
     private getHelpText(): string {
         return [
             'NodeSeek RSS 飞书机器人命令：',
             '/start - 绑定当前用户和会话',
             '/getme - 查看绑定信息',
             '/list - 查看订阅列表',
-            '/add 关键词1 关键词2 关键词3 - 添加订阅',
+            '/add 关键词1 -y 关键词2 - 添加订阅，-y 表示前一个关键词严格匹配',
             '/del 订阅ID - 删除订阅',
             '/post - 查看最近 10 条文章',
+            '/clear 30d 或 /clear 2m - 清理指定时间以前的文章',
             '/stop - 停止推送',
             '/resume - 恢复推送',
             '/unbind - 解除绑定',

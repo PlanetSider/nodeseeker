@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
-import { createDatabaseConnection } from '../config/database';
-import type { BaseConfig, Post, KeywordSub } from '../types';
+import { existsSync, statSync } from 'fs';
+import { createDatabaseConnection, getDatabaseConfig } from '../config/database';
+import type { BaseConfig, Post, KeywordSub, CleanupResult } from '../types';
 import { logger } from '../utils/logger';
 
 export class DatabaseService {
@@ -477,8 +478,8 @@ export class DatabaseService {
   // 关键词订阅相关操作
   createKeywordSub(sub: Omit<KeywordSub, 'id' | 'created_at' | 'updated_at'>): KeywordSub {
     const stmt = this.db.query(`
-      INSERT INTO keywords_sub (keyword1, keyword2, keyword3, creator, category)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO keywords_sub (keyword1, keyword2, keyword3, keyword1_strict, keyword2_strict, keyword3_strict, creator, category)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *
     `);
 
@@ -486,6 +487,9 @@ export class DatabaseService {
       sub.keyword1 || null,
       sub.keyword2 || null,
       sub.keyword3 || null,
+      sub.keyword1_strict || 0,
+      sub.keyword2_strict || 0,
+      sub.keyword3_strict || 0,
       sub.creator || null,
       sub.category || null
     ) as KeywordSub;
@@ -537,6 +541,18 @@ export class DatabaseService {
       updates.push('keyword3 = ?');
       values.push(sub.keyword3 || null);
     }
+    if (sub.keyword1_strict !== undefined) {
+      updates.push('keyword1_strict = ?');
+      values.push(sub.keyword1_strict || 0);
+    }
+    if (sub.keyword2_strict !== undefined) {
+      updates.push('keyword2_strict = ?');
+      values.push(sub.keyword2_strict || 0);
+    }
+    if (sub.keyword3_strict !== undefined) {
+      updates.push('keyword3_strict = ?');
+      values.push(sub.keyword3_strict || 0);
+    }
     if (sub.creator !== undefined) {
       updates.push('creator = ?');
       values.push(sub.creator || null);
@@ -560,7 +576,10 @@ export class DatabaseService {
       RETURNING *
     `);
 
-    return stmt.get(...values) as KeywordSub | null;
+    const result = stmt.get(...values) as KeywordSub | null;
+    this.clearCacheByPattern('KeywordSubs');
+    this.clearCacheByPattern('Subscriptions');
+    return result;
   }
 
   getKeywordSubById(id: number): KeywordSub | null {
@@ -703,6 +722,42 @@ export class DatabaseService {
     return result?.last_update || null; // 返回最后更新时间
   }
 
+  getDatabaseSizeMb(): number {
+    const dbPath = getDatabaseConfig().path;
+    const paths = [dbPath, `${dbPath}-wal`, `${dbPath}-shm`];
+    const totalBytes = paths.reduce((total, filePath) => {
+      if (!existsSync(filePath)) return total;
+      return total + statSync(filePath).size;
+    }, 0);
+
+    return Math.round((totalBytes / 1024 / 1024) * 100) / 100;
+  }
+
+  cleanupPostsBefore(cutoffDate: Date): CleanupResult {
+    const cutoff = cutoffDate.toISOString();
+    const databaseSizeBeforeMb = this.getDatabaseSizeMb();
+    const result = this.db.query(`
+      DELETE FROM posts
+      WHERE datetime(pub_date) < datetime(?)
+    `).run(cutoff);
+
+    this.queryCache.clear();
+
+    try {
+      this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+      this.db.exec('VACUUM');
+    } catch (error) {
+      logger.warn('数据库清理后压缩失败:', error);
+    }
+
+    return {
+      deletedCount: result.changes || 0,
+      cutoffDate: cutoff,
+      databaseSizeBeforeMb,
+      databaseSizeAfterMb: this.getDatabaseSizeMb()
+    };
+  }
+
   // 获取综合统计信息
   getComprehensiveStats(): {
     total_posts: number;
@@ -712,6 +767,7 @@ export class DatabaseService {
     today_pushed: number;
     today_posts: number;
     last_update: string | null;
+    database_size_mb: number;
   } {
     try {
       const totalPosts = this.getPostsCount();
@@ -721,6 +777,7 @@ export class DatabaseService {
       const todayPushed = this.getTodayPushedCount();
       const todayPosts = this.getTodayPostsCount();
       const lastUpdate = this.getLastUpdateTime();
+      const databaseSizeMb = this.getDatabaseSizeMb();
 
       return {
         total_posts: totalPosts,
@@ -729,7 +786,8 @@ export class DatabaseService {
         total_subscriptions: totalSubscriptions,
         today_pushed: todayPushed,
         today_posts: todayPosts,
-        last_update: lastUpdate
+        last_update: lastUpdate,
+        database_size_mb: databaseSizeMb
       };
     } catch (error) {
       logger.error('获取综合统计信息失败:', error);
@@ -740,7 +798,8 @@ export class DatabaseService {
         total_subscriptions: 0,
         today_pushed: 0,
         today_posts: 0,
-        last_update: null
+        last_update: null,
+        database_size_mb: 0
       };
     }
   }

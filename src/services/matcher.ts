@@ -90,7 +90,12 @@ export class MatcherService {
   /**
    * 执行匹配检查（字符串或正则）
    */
-  private performMatch(text: string, keyword: string): boolean {
+  private performMatch(text: string, keyword: string, strict: boolean = false): boolean {
+    if (strict) {
+      const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`(^|[^A-Za-z0-9_])${escapedKeyword}([^A-Za-z0-9_]|$)`, 'i').test(text);
+    }
+
     const regexInfo = this.isRegexKeyword(keyword);
     
     if (regexInfo.isRegex && regexInfo.pattern) {
@@ -118,8 +123,11 @@ export class MatcherService {
     creatorLower?: string;
     categoryLower?: string;
   }, subscription: KeywordSub, config: BaseConfig): MatchResult {
-    const keywords = [subscription.keyword1, subscription.keyword2, subscription.keyword3]
-      .filter(k => k && k.trim().length > 0);
+    const keywords = [
+      { value: subscription.keyword1, strict: subscription.keyword1_strict === 1 },
+      { value: subscription.keyword2, strict: subscription.keyword2_strict === 1 },
+      { value: subscription.keyword3, strict: subscription.keyword3_strict === 1 }
+    ].filter((keyword): keyword is { value: string; strict: boolean } => !!keyword.value?.trim());
 
     if (keywords.length === 0 && !subscription.creator && !subscription.category) {
       return {
@@ -188,31 +196,29 @@ export class MatcherService {
     const matchedKeywords: string[] = [];
     let totalMatchedKeywords = 0;
 
-    for (const keyword of keywords) {
-      if (!keyword) continue;
-      
+    for (const { value: keyword, strict } of keywords) {
       let keywordMatched = false;
       
       // 检查标题匹配
-      if (this.performMatch(titleText, keyword)) {
+      if (this.performMatch(titleText, keyword, strict)) {
         matchDetails.titleMatches.push(keyword);
         keywordMatched = true;
       }
       
       // 检查内容匹配（如果不是仅标题模式）
-      if (!keywordMatched && !config.only_title && this.performMatch(contentText, keyword)) {
+      if (!keywordMatched && !config.only_title && this.performMatch(contentText, keyword, strict)) {
         matchDetails.contentMatches.push(keyword);
         keywordMatched = true;
       }
       
       // 检查作者匹配（如果没有指定具体的creator过滤条件）
-      if (!keywordMatched && !subscription.creator && this.performMatch(creatorText, keyword)) {
+      if (!keywordMatched && !subscription.creator && this.performMatch(creatorText, keyword, strict)) {
         matchDetails.authorMatches.push(keyword);
         keywordMatched = true;
       }
       
       // 检查分类匹配（如果没有指定具体的category过滤条件）
-      if (!keywordMatched && !subscription.category && this.performMatch(categoryText, keyword)) {
+      if (!keywordMatched && !subscription.category && this.performMatch(categoryText, keyword, strict)) {
         matchDetails.categoryMatches.push(keyword);
         keywordMatched = true;
       }

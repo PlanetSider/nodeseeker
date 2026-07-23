@@ -559,7 +559,36 @@ document.addEventListener("DOMContentLoaded", function () {
       if (el("drawerStatTodayPosts")) el("drawerStatTodayPosts").textContent = data.today_posts || 0;
       if (el("drawerStatPushed")) el("drawerStatPushed").textContent = data.pushed_posts || 0;
       if (el("drawerStatTotalPosts")) el("drawerStatTotalPosts").textContent = data.total_posts || 0;
+      if (el("drawerStatDatabaseSize")) el("drawerStatDatabaseSize").textContent = `${Number(data.database_size_mb || 0).toFixed(2)} M`;
     }
+  }
+
+  function initDatabaseCleanup() {
+    document.getElementById("cleanupDatabaseBtn")?.addEventListener("click", async () => {
+      const amount = parseInt(document.getElementById("cleanupAmount").value, 10);
+      const unit = document.getElementById("cleanupUnit").value;
+      if (!Number.isInteger(amount) || amount <= 0) {
+        Toast.warning("请输入要清理的天数或月数");
+        return;
+      }
+
+      const unitLabel = unit === "months" ? "个月" : "天";
+      if (!confirm(`确认清理 ${amount}${unitLabel}以前的文章数据？此操作不可恢复。`)) return;
+
+      const result = await apiRequest("/api/stats/cleanup", {
+        method: "POST",
+        body: JSON.stringify({ amount, unit }),
+      });
+
+      if (result?.success) {
+        Toast.success(`已清理 ${result.data.deletedCount} 条文章，数据库 ${Number(result.data.databaseSizeAfterMb).toFixed(2)} M`);
+        document.getElementById("cleanupAmount").value = "";
+        updateStats();
+        loadPosts(1, currentFilters);
+      } else {
+        Toast.error(result?.message || "清理失败");
+      }
+    });
   }
 
   // ============================================
@@ -940,7 +969,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
     filterSubscription.innerHTML = '<option value="">全部订阅</option>';
     subs.forEach((sub) => {
-      const keywords = [sub.keyword1, sub.keyword2, sub.keyword3].filter(Boolean).join(", ");
+      const keywords = [1, 2, 3]
+        .map((index) => {
+          const keyword = sub[`keyword${index}`];
+          if (!keyword) return "";
+          return `${keyword}${sub[`keyword${index}_strict`] === 1 ? "[严]" : ""}`;
+        })
+        .filter(Boolean)
+        .join(", ");
       const extra = [
         sub.creator ? `👤${sub.creator}` : "",
         sub.category ? `📂${getCategoryName(sub.category)}` : "",
@@ -979,13 +1015,24 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
+    const renderKeyword = (sub, index) => {
+      const keyword = sub[`keyword${index}`];
+      if (!keyword) return "";
+      const strict = sub[`keyword${index}_strict`] === 1;
+      return `
+        <span class="subscription-keyword-option">
+          <span class="tag ${strict ? 'tag-blue' : ''}">${escapeHtml(keyword)}${strict ? ' · 严格' : ''}</span>
+          <label class="subscription-strict-option" title="严格匹配不区分大小写，且不匹配单词片段">
+            <input type="checkbox" class="strict-toggle" data-id="${sub.id}" data-index="${index}" ${strict ? 'checked' : ''} />
+            严格
+          </label>
+        </span>`;
+    };
+
     container.innerHTML = subs.map((sub) => `
       <div class="subscription-item" data-id="${sub.id}">
         <div class="subscription-keywords">
-          ${[sub.keyword1, sub.keyword2, sub.keyword3]
-            .filter((k) => k)
-            .map((k) => `<span class="tag tag-blue">${escapeHtml(k)}</span>`)
-            .join("")}
+          ${[1, 2, 3].map((index) => renderKeyword(sub, index)).join("")}
         </div>
         <div class="subscription-filters">
           ${sub.creator ? `<span class="tag">👤 ${escapeHtml(sub.creator)}</span>` : ""}
@@ -996,6 +1043,26 @@ document.addEventListener("DOMContentLoaded", function () {
         </button>
       </div>
     `).join("");
+
+    container.querySelectorAll(".strict-toggle").forEach((checkbox) => {
+      checkbox.addEventListener("change", async () => {
+        const id = checkbox.dataset.id;
+        const index = checkbox.dataset.index;
+        const result = await apiRequest(`/api/subscriptions/${id}`, {
+          method: "PUT",
+          body: JSON.stringify({ [`keyword${index}_strict`]: checkbox.checked ? 1 : 0 }),
+        });
+
+        if (result?.success) {
+          Toast.success("严格匹配设置已更新");
+          loadSubscriptions();
+          loadFilterSubscriptions();
+        } else {
+          Toast.error(result?.message || "更新失败");
+          checkbox.checked = !checkbox.checked;
+        }
+      });
+    });
 
     // 绑定删除事件
     container.querySelectorAll(".delete-sub-btn").forEach((btn) => {
@@ -1025,6 +1092,9 @@ document.addEventListener("DOMContentLoaded", function () {
         keyword1: document.getElementById("keyword1").value.trim() || undefined,
         keyword2: document.getElementById("keyword2").value.trim() || undefined,
         keyword3: document.getElementById("keyword3").value.trim() || undefined,
+        keyword1_strict: document.getElementById("keyword1Strict").checked ? 1 : 0,
+        keyword2_strict: document.getElementById("keyword2Strict").checked ? 1 : 0,
+        keyword3_strict: document.getElementById("keyword3Strict").checked ? 1 : 0,
         creator: document.getElementById("subCreator").value.trim() || undefined,
         category: document.getElementById("subCategory").value || undefined,
       };
@@ -1321,6 +1391,7 @@ document.addEventListener("DOMContentLoaded", function () {
     initRssConfig();
     initFeishuConfig();
     initSubscriptions();
+    initDatabaseCleanup();
     initSettingsDropdown();
     initLoginModal();
     initLogout();

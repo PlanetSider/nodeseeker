@@ -1104,6 +1104,29 @@
   flex-wrap: wrap;
 }
 
+.keyword-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.strict-match-option,
+.subscription-strict-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.subscription-keyword-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .subscription-filters {
   display: flex;
   gap: 6px;
@@ -1153,6 +1176,19 @@
 .stat-card-simple .stat-label {
   font-size: 13px;
   color: var(--text-muted);
+}
+
+.database-cleanup-form {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(90px, 120px) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .database-cleanup-form {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ============================================
