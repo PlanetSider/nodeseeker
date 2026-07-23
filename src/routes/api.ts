@@ -47,6 +47,10 @@ const rssSourceSchema = z.object({
         z.number().int().min(0).max(1),
         z.boolean().transform(value => value ? 1 : 0),
     ]).default(1),
+    subscription_enabled: z.union([
+        z.number().int().min(0).max(1),
+        z.boolean().transform(value => value ? 1 : 0),
+    ]).default(1),
 });
 
 const rssSourceUpdateSchema = rssSourceSchema.partial();

@@ -315,9 +315,11 @@ export class DatabaseService {
 
   getUnpushedPosts(): Post[] {
     const stmt = this.db.query(`
-      SELECT * FROM posts 
-      WHERE push_status = 0 
-      ORDER BY pub_date ASC
+      SELECT p.*, rs.name AS rss_source_name
+      FROM posts p
+      LEFT JOIN rss_sources rs ON p.rss_source_id = rs.id
+      WHERE p.push_status = 0
+      ORDER BY p.pub_date ASC
     `);
     
     return stmt.all() as Post[];
@@ -630,7 +632,7 @@ export class DatabaseService {
   ensureDefaultRSSSource(url: string = 'https://rss.nodeseek.com/'): RSSSource {
     const existing = this.getAllRSSSources(true)[0];
     if (existing) return existing;
-    return this.createRSSSource({ name: 'NodeSeek', url, enabled: 1 });
+    return this.createRSSSource({ name: 'NodeSeek', url, enabled: 1, subscription_enabled: 1 });
   }
 
   getRSSSourceById(id: number): RSSSource | null {
@@ -640,11 +642,11 @@ export class DatabaseService {
 
   createRSSSource(source: Omit<RSSSource, 'id' | 'created_at' | 'updated_at'>): RSSSource {
     const stmt = this.db.query(`
-      INSERT INTO rss_sources (name, url, enabled)
-      VALUES (?, ?, ?)
+      INSERT INTO rss_sources (name, url, enabled, subscription_enabled)
+      VALUES (?, ?, ?, ?)
       RETURNING *
     `);
-    const result = stmt.get(source.name, source.url, source.enabled ?? 1) as RSSSource;
+    const result = stmt.get(source.name, source.url, source.enabled ?? 1, source.subscription_enabled ?? 1) as RSSSource;
     this.queryCache.clear();
     return result;
   }
@@ -663,6 +665,10 @@ export class DatabaseService {
     if (source.enabled !== undefined) {
       updates.push('enabled = ?');
       values.push(source.enabled);
+    }
+    if (source.subscription_enabled !== undefined) {
+      updates.push('subscription_enabled = ?');
+      values.push(source.subscription_enabled);
     }
     if (updates.length === 0) return this.getRSSSourceById(id);
 

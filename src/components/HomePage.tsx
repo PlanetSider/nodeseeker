@@ -287,6 +287,7 @@ export const HomePage: FC = () => {
             <div class="form-group">
               <label for="rssSourceUrl" class="form-label">RSS 源地址</label>
               <input type="url" id="rssSourceUrl" class="input-field" placeholder="https://rss.nodeseek.com/" required />
+              <span class="form-hint">添加后默认开启订阅：按关键词命中后推送。关闭订阅时，新内容更新后直接推送。</span>
             </div>
             <div class="form-actions">
               <button type="button" id="testNewRssBtn" class="btn btn-secondary">测试连接</button>

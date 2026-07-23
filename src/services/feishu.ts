@@ -145,18 +145,18 @@ export class FeishuService {
         }
     }
 
-    async pushPost(post: Post, matchedSub: KeywordSub): Promise<boolean> {
+    async pushPost(post: Post, matchedSub?: KeywordSub): Promise<boolean> {
         const config = this.dbService.getBaseConfig();
         if (!config?.feishu_chat_id || config.stop_push === 1) return false;
 
-        const keywords = [matchedSub.keyword1, matchedSub.keyword2, matchedSub.keyword3]
+        const keywords = [matchedSub?.keyword1, matchedSub?.keyword2, matchedSub?.keyword3]
             .filter((keyword) => keyword?.trim())
             .join(' + ');
         const details = [
             keywords && `🎯 ${keywords}`,
-            matchedSub.creator && `👤 ${matchedSub.creator}`,
-            matchedSub.category && `🗂️ ${this.getCategoryName(matchedSub.category)}`,
-            matchedSub.rss_source_name && `📡 ${matchedSub.rss_source_name}`,
+            matchedSub?.creator && `👤 ${matchedSub.creator}`,
+            matchedSub?.category && `🗂️ ${this.getCategoryName(matchedSub.category)}`,
+            (matchedSub?.rss_source_name || post.rss_source_name) && `📡 ${matchedSub?.rss_source_name || post.rss_source_name}`,
         ].filter(Boolean).join('  ');
         const translated = await new AITranslationService(this.dbService).translatePost(post);
         const postContent = translated
@@ -166,7 +166,7 @@ export class FeishuService {
         const success = await this.sendMessage(config.feishu_chat_id, text);
 
         if (success) {
-            this.dbService.updatePostPushStatus(post.post_id, 3, matchedSub.id, new Date().toISOString(), post.rss_source_id);
+            this.dbService.updatePostPushStatus(post.post_id, 3, matchedSub?.id, new Date().toISOString(), post.rss_source_id);
         }
         return success;
     }

@@ -58,6 +58,7 @@ export interface RSSSource {
   name: string;
   url: string;
   enabled: number;
+  subscription_enabled: number;
   created_at?: string;
   updated_at?: string;
 }

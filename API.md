@@ -417,6 +417,8 @@ NodeSeeker 使用飞书官方 SDK 的 WebSocket 长连接接收 `im.message.rece
 
 飞书 `/add` 命令会发送 RSS 来源选择卡片，可连续选择一个或多个来源应用监控；关键词后添加 `-y` 可开启严格匹配，例如 `/add nc -y vps`。`/del 关键词` 会发送该关键词当前监控来源的取消卡片，仍可使用 `/del 订阅ID` 直接删除订阅。`/clear 30d` 或 `/clear 2m` 可清理指定时间以前的文章。
 
+RSS 来源的 `subscription_enabled` 控制是否启用关键词订阅：`1` 表示按订阅关键词命中后推送，`0` 表示该来源新内容抓取后直接进入飞书推送流程。
+
 ## AI 翻译
 
 - `GET /api/ai-translation/config`：获取脱敏后的 AI 翻译配置和 RSS 来源列表。

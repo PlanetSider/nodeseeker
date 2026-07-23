@@ -342,13 +342,12 @@ export class RSSService {
           try {
             // 检查是否有订阅（关键词订阅）
             const subscriptions = this.dbService.getAllKeywordSubs();
-            const hasSubscriptions = subscriptions.length > 0;
-            
+            const shouldProcess = source.subscription_enabled === 0
+              || subscriptions.some((subscription) => !subscription.rss_source_id || subscription.rss_source_id === source.id);
 
-            
             const postsWithDefaults = newPostsToCreate.map((post) => ({
               ...post,
-              push_status: hasSubscriptions ? 0 : 2, // 有订阅则未推送，无订阅则无需推送
+              push_status: shouldProcess ? 0 : 2,
             }));
 
             const createdCount =

@@ -852,6 +852,10 @@ document.addEventListener("DOMContentLoaded", function () {
             <input class="rss-source-enabled" type="checkbox" ${source.enabled === 1 ? "checked" : ""} />
             启用
           </label>
+          <label class="subscription-strict-option" title="开启后按关键词订阅推送；关闭后该来源新内容直接推送">
+            <input class="rss-source-subscription-enabled" type="checkbox" ${source.subscription_enabled !== 0 ? "checked" : ""} />
+            开启订阅
+          </label>
         </div>
         <div class="subscription-actions">
           <button class="btn btn-secondary btn-xs test-source-btn" type="button">测试</button>
@@ -934,6 +938,7 @@ document.addEventListener("DOMContentLoaded", function () {
           name: document.getElementById("rssSourceName").value.trim(),
           url: document.getElementById("rssSourceUrl").value.trim(),
           enabled: 1,
+          subscription_enabled: 1,
         }),
       });
       if (!result?.success) return Toast.error(result?.message || "添加失败");
@@ -980,6 +985,7 @@ document.addEventListener("DOMContentLoaded", function () {
             name: item.querySelector(".rss-source-name").value.trim(),
             url: item.querySelector(".rss-source-url").value.trim(),
             enabled: item.querySelector(".rss-source-enabled").checked ? 1 : 0,
+            subscription_enabled: item.querySelector(".rss-source-subscription-enabled").checked ? 1 : 0,
           }),
         });
         if (!result?.success) return Toast.error(result?.message || "保存失败");

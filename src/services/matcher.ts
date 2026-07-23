@@ -289,32 +289,26 @@ export class MatcherService {
 
     const result: PushResult = { pushed: 0, failed: 0, skipped: 0 };
 
-    if (subscriptions.length === 0) {
-      const batchUpdates = unpushedPosts.map(post => ({
-        postId: post.post_id,
-        pushStatus: 2,
-        rssSourceId: post.rss_source_id
-      }));
-      
-      if (batchUpdates.length > 0) {
-        try {
-          this.dbService.batchUpdatePostPushStatus(batchUpdates);
-          result.skipped = batchUpdates.length;
-        } catch (error) {
-          logger.error('批量更新状态失败', error);
-          result.failed = batchUpdates.length;
-        }
-      }
-      return result;
-    }
-
     const matchedUpdates: Array<{ postId: number; pushStatus: number; subId?: number; rssSourceId?: number }> = [];
     const unmatchedUpdates: Array<{ postId: number; pushStatus: number; rssSourceId?: number }> = [];
-    const matchedPostsForPush: Array<{ post: Post; subscription: KeywordSub }> = [];
+    const matchedPostsForPush: Array<{ post: Post; subscription?: KeywordSub }> = [];
+    const rssSources = new Map(this.dbService.getAllRSSSources(true).map((source) => [source.id, source]));
 
     // 第一步：比对所有帖子和订阅，确定匹配状态
     for (const post of unpushedPosts) {
       try {
+        const source = post.rss_source_id ? rssSources.get(post.rss_source_id) : null;
+        if (source?.subscription_enabled === 0) {
+          matchedUpdates.push({
+            postId: post.post_id,
+            pushStatus: 1,
+            rssSourceId: post.rss_source_id
+          });
+          matchedPostsForPush.push({ post });
+          result.pushed++;
+          continue;
+        }
+
         const matches = this.checkPostMatchesWithData(post, subscriptions, config);
         
         if (matches.length === 0) {
@@ -328,9 +322,7 @@ export class MatcherService {
             subId: firstMatch.subscription?.id,
             rssSourceId: post.rss_source_id
           });
-          if (firstMatch.subscription) {
-            matchedPostsForPush.push({ post, subscription: firstMatch.subscription });
-          }
+          matchedPostsForPush.push({ post, subscription: firstMatch.subscription });
           result.pushed++;
         }
       } catch (error) {
