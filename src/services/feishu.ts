@@ -10,26 +10,16 @@ interface FeishuApiResponse<T = unknown> {
     expire?: number;
 }
 
-interface FeishuMessageEvent {
-    schema?: string;
-    token?: string;
-    challenge?: string;
-    header?: {
-        event_id?: string;
-        event_type?: string;
-        token?: string;
+export interface FeishuMessageEvent {
+    sender?: {
+        sender_id?: { open_id?: string };
+        sender_type?: string;
     };
-    event?: {
-        sender?: {
-            sender_id?: { open_id?: string };
-            sender_type?: string;
-        };
-        message?: {
-            chat_id?: string;
-            chat_type?: string;
-            content?: string;
-            message_type?: string;
-        };
+    message?: {
+        chat_id?: string;
+        chat_type?: string;
+        content?: string;
+        message_type?: string;
     };
 }
 
@@ -123,31 +113,22 @@ export class FeishuService {
         return success;
     }
 
-    async handleEvent(payload: FeishuMessageEvent): Promise<{ challenge?: string }> {
-        const config = this.dbService.getBaseConfig();
-        const token = payload.header?.token || payload.token;
-        if (!config?.feishu_verification_token || token !== config.feishu_verification_token) {
-            throw new Error('飞书事件 Verification Token 校验失败');
-        }
-        if (payload.challenge) return { challenge: payload.challenge };
-        if (payload.header?.event_type !== 'im.message.receive_v1') return {};
+    async handleMessageEvent(payload: FeishuMessageEvent, eventId?: string): Promise<void> {
+        if (eventId && this.isDuplicateEvent(eventId)) return;
 
-        const eventId = payload.header.event_id;
-        if (eventId && this.isDuplicateEvent(eventId)) return {};
-
-        const message = payload.event?.message;
-        const senderOpenId = payload.event?.sender?.sender_id?.open_id;
-        if (!message?.chat_id || !senderOpenId || message.message_type !== 'text') return {};
+        const message = payload.message;
+        const senderOpenId = payload.sender?.sender_id?.open_id;
+        if (!message?.chat_id || !senderOpenId || message.message_type !== 'text') return;
 
         let text = '';
         try {
             text = JSON.parse(message.content || '{}').text?.trim() || '';
         } catch {
-            return {};
+            return;
         }
         const cleanText = text.replace(/@_user_\d+/g, '').trim();
         const commandText = cleanText.split(/\s+/)[0]?.trim();
-        if (!commandText.startsWith('/')) return {};
+        if (!commandText.startsWith('/')) return;
 
         const reply = await this.executeCommand(commandText.toLowerCase(), cleanText.split(/\s+/).slice(1), {
             chatId: message.chat_id,
@@ -155,7 +136,6 @@ export class FeishuService {
             chatType: message.chat_type || '',
         });
         if (reply) await this.sendMessage(message.chat_id, reply);
-        return {};
     }
 
     private isDuplicateEvent(eventId: string): boolean {

@@ -92,26 +92,11 @@ rm -rf data logs
 
 删除 `./data` 会永久删除 SQLite 数据库，执行前应先备份。
 
-## HTTPS 与飞书回调
+## 飞书长连接网络要求
 
-飞书事件订阅必须能够通过公网 HTTPS 访问：
+飞书事件通过 SDK WebSocket 长连接接收。容器只需要能主动访问公网飞书开放平台，不需要暴露事件接收端点或配置 HTTPS 回调地址。
 
-```text
-https://你的域名/feishu/events
-```
-
-NodeSeeker 自身监听容器内 `3010` 端口，建议使用 Nginx、Caddy 或现有网关终止 TLS，再转发到宿主机 `3010` 端口。
-
-Nginx 示例：
-
-```nginx
-location / {
-    proxy_pass http://127.0.0.1:3010;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-}
-```
+如果 Web 控制台需要公网访问，可使用 Nginx、Caddy 或现有网关转发到宿主机 `3010` 端口。
 
 ## 健康检查
 

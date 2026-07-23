@@ -5,7 +5,6 @@ export interface BaseConfig {
   password: string;
   feishu_app_id?: string;
   feishu_app_secret?: string;
-  feishu_verification_token?: string;
   feishu_chat_id?: string;
   feishu_user_open_id?: string;
   bound_user_name?: string;
@@ -166,7 +165,6 @@ export interface DatabaseStats {
 export interface FeishuBotConfig {
   appId: string;
   appSecret: string;
-  verificationToken: string;
   chatId?: string;
 }
 

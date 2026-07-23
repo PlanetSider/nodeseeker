@@ -12,7 +12,6 @@ import { logger } from './utils/logger';
 // 导入路由
 import { authRoutes } from './routes/auth';
 import { apiRoutes } from './routes/api';
-import { feishuRoutes } from './routes/feishu';
 import { pageRoutes } from './routes/pages';
 
 // 类型定义
@@ -425,7 +424,6 @@ app.post('/api/scheduler/rss/run', async (c) => {
 // 路由注册
 app.route('/auth', authRoutes);
 app.route('/api', apiRoutes);
-app.route('/feishu', feishuRoutes);
 app.route('/', pageRoutes);
 
 // 默认 RSS 配置

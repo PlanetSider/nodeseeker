@@ -131,10 +131,6 @@ export class DatabaseService {
       updates.push('feishu_app_secret = ?');
       values.push(config.feishu_app_secret);
     }
-    if (config.feishu_verification_token !== undefined) {
-      updates.push('feishu_verification_token = ?');
-      values.push(config.feishu_verification_token);
-    }
     if (config.feishu_chat_id !== undefined) {
       updates.push('feishu_chat_id = ?');
       values.push(config.feishu_chat_id);

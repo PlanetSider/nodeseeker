@@ -857,12 +857,10 @@ document.addEventListener("DOMContentLoaded", function () {
     if (result?.success) {
       document.getElementById("feishuAppId").value = result.data.feishu_app_id || "";
       document.getElementById("feishuAppSecret").placeholder = result.data.has_feishu_app_secret ? "已配置，留空则不修改" : "请输入 App Secret";
-      document.getElementById("feishuVerificationToken").placeholder = result.data.has_feishu_verification_token ? "已配置，留空则不修改" : "请输入 Verification Token";
       document.getElementById("feishuChatId").value = result.data.feishu_chat_id || "";
       document.getElementById("stopPush").checked = result.data.stop_push === 1;
       document.getElementById("onlyTitle").checked = result.data.only_title === 1;
     }
-    document.getElementById("feishuEventUrl").value = `${window.location.origin}/feishu/events`;
     await loadFeishuStatus();
   }
 
@@ -875,7 +873,8 @@ document.addEventListener("DOMContentLoaded", function () {
     if (statusPanel) {
       statusPanel.style.display = "block";
       document.getElementById("feishuAppStatus").textContent = data.connected ? "✅ 已连接" : "❌ 未连接";
-      document.getElementById("feishuTokenStatus").textContent = data.config.has_verification_token ? "✅ 已配置" : "❌ 未配置";
+      const stateNames = { idle: "未启动", connecting: "连接中", connected: "已连接", reconnecting: "重连中", failed: "连接失败" };
+      document.getElementById("feishuConnectionStatus").textContent = stateNames[data.connection?.state] || data.connection?.state || "未知";
       document.getElementById("feishuBindingStatus").textContent = data.bound ? "✅ 已绑定" : "❌ 未绑定";
     }
   }
@@ -891,9 +890,7 @@ document.addEventListener("DOMContentLoaded", function () {
         only_title: document.getElementById("onlyTitle").checked ? 1 : 0,
       };
       const appSecret = document.getElementById("feishuAppSecret").value.trim();
-      const verificationToken = document.getElementById("feishuVerificationToken").value.trim();
       if (appSecret) data.feishu_app_secret = appSecret;
-      if (verificationToken) data.feishu_verification_token = verificationToken;
 
       const result = await apiRequest("/api/config", {
         method: "PUT",
@@ -903,7 +900,6 @@ document.addEventListener("DOMContentLoaded", function () {
       if (result?.success) {
         Toast.success("飞书配置已保存");
         document.getElementById("feishuAppSecret").value = "";
-        document.getElementById("feishuVerificationToken").value = "";
         await loadFeishuConfig();
       } else {
         Toast.error(result?.message || "保存失败");

@@ -147,27 +147,21 @@ docker run -d \
 3. 开通机器人发送消息、接收消息所需权限。
 4. 获取 `App ID` 和 `App Secret`。
 
-### 2. 配置事件订阅
+### 2. 配置长连接事件订阅
 
-NodeSeeker 必须通过可从公网访问的 HTTPS 地址接收飞书事件：
-
-```text
-https://你的域名/feishu/events
-```
+NodeSeeker 使用飞书官方 SDK 的 WebSocket 长连接接收事件，不需要公网回调地址或内网穿透。
 
 在飞书开放平台完成以下设置：
 
-1. 进入“事件与回调”，选择“将事件发送至开发者服务器”。
-2. 将上述地址设置为请求地址。
-3. 添加事件 `im.message.receive_v1`。
-4. 复制事件订阅的 `Verification Token`。
-5. 发布应用版本，并确保目标用户可以使用该应用。
+1. 进入“事件与回调”，选择“使用长连接接收事件”。
+2. 添加事件 `im.message.receive_v1`。
+3. 发布应用版本，并确保目标用户可以使用该应用。
 
 ### 3. 在 NodeSeeker 中绑定
 
 1. 登录 NodeSeeker Web 控制台。
 2. 打开“飞书配置”。
-3. 填写 `App ID`、`App Secret` 和 `Verification Token`。
+3. 填写 `App ID` 和 `App Secret`。
 4. 保存并测试连接。
 5. 在飞书中向机器人发送 `/start`，系统会绑定当前用户及会话。
 
@@ -196,24 +190,9 @@ https://你的域名/feishu/events
 /add regex:AI|人工智能 深度学习
 ```
 
-## 反向代理
+## 网络要求
 
-飞书事件订阅要求公网 HTTPS。反向代理需要将原始请求转发至 NodeSeeker，例如 Nginx：
-
-```nginx
-location / {
-    proxy_pass http://127.0.0.1:3010;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-}
-```
-
-配置完成后确认以下地址可访问：
-
-```bash
-curl https://你的域名/health
-```
+飞书长连接只要求 NodeSeeker 运行环境可以主动访问公网飞书开放平台，不要求服务器提供公网 IP、域名或 HTTPS 回调地址。Web 控制台如需公网访问，可按自己的部署环境配置 Nginx、Caddy 或其他反向代理。
 
 ## 本地开发
 
@@ -281,8 +260,8 @@ rm -rf data logs
 |------|--------|
 | 容器无法启动 | 执行 `docker compose logs nodeseeker` 查看迁移或端口错误 |
 | 页面无法访问 | 检查 `docker compose ps`、端口映射和服务器防火墙 |
-| 飞书 URL 校验失败 | 检查 HTTPS、反向代理、`Verification Token` 和 `/feishu/events` 路径 |
-| 飞书机器人无回复 | 检查应用版本是否发布、权限和 `im.message.receive_v1` 事件 |
+| 飞书长连接未连接 | 检查 App ID、App Secret、容器公网访问能力和飞书事件订阅方式 |
+| 飞书机器人无回复 | 检查应用版本是否发布、权限、长连接模式和 `im.message.receive_v1` 事件 |
 | 飞书无法推送 | 先发送 `/start` 绑定会话，并检查应用发送消息权限 |
 | RSS 抓取失败 | 检查 RSS 地址、代理和容器网络 |
 

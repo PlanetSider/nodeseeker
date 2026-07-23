@@ -86,7 +86,6 @@ Authorization: Bearer <token>
     "feishu_app_id": "cli_xxxxxxxxxxxxx",
     "feishu_chat_id": "oc_xxxxxxxxxxxxx",
     "has_feishu_app_secret": true,
-    "has_feishu_verification_token": true,
     "bound_user_name": "John Doe",
     "bound_user_username": "johndoe",
     "stop_push": 0,
@@ -109,7 +108,6 @@ Content-Type: application/json
 {
   "feishu_app_id": "cli_xxxxxxxxxxxxx",
   "feishu_app_secret": "your-app-secret",
-  "feishu_verification_token": "your-verification-token",
   "feishu_chat_id": "oc_xxxxxxxxxxxxx",
   "stop_push": 0,
   "only_title": 1,
@@ -415,19 +413,7 @@ Authorization: Bearer <token>
 
 ## 飞书集成
 
-### 事件订阅回调
-```http
-POST /feishu/events
-Content-Type: application/json
-
-{
-  "challenge": "challenge-value",
-  "token": "verification-token",
-  "type": "url_verification"
-}
-```
-
-飞书开放平台会完成 URL 校验并向该端点发送 `im.message.receive_v1` 事件。此接口无需登录，但会校验 Verification Token。
+NodeSeeker 使用飞书官方 SDK 的 WebSocket 长连接接收 `im.message.receive_v1` 事件，不提供 webhook 接口。
 
 ### 获取应用状态
 ```http
@@ -490,7 +476,6 @@ interface BaseConfig {
   password: string;
   feishu_app_id?: string;
   feishu_app_secret?: string;
-  feishu_verification_token?: string;
   feishu_chat_id?: string;
   feishu_user_open_id?: string;
   bound_user_name?: string;

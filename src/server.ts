@@ -2,6 +2,7 @@
 import { app, initializeApp, startServer } from './index';
 import { DatabaseService } from './services/database';
 import { SchedulerService } from './services/scheduler';
+import { feishuConnectionService } from './services/feishuConnection';
 import { logger } from './utils/logger';
 
 export let schedulerService: SchedulerService | null = null;
@@ -18,6 +19,9 @@ async function main() {
 
         // 启动定时任务
         schedulerService.start();
+
+        // 启动飞书事件长连接（未配置凭据时自动跳过）
+        await feishuConnectionService.sync(dbService);
 
         // 启动 Bun 服务器
         const server = Bun.serve({
@@ -45,6 +49,7 @@ function gracefulShutdown() {
     if (schedulerService) {
         schedulerService.stop();
     }
+    feishuConnectionService.stop();
 
     logger.success('服务器已关闭');
     process.exit(0);

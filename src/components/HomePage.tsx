@@ -321,11 +321,6 @@ export const HomePage: FC = () => {
                 <input type="password" id="feishuAppSecret" class="input-field" autocomplete="new-password" placeholder="留空则保留已保存的 Secret" />
               </div>
               <div class="form-group">
-                <label for="feishuVerificationToken" class="form-label">Verification Token</label>
-                <input type="password" id="feishuVerificationToken" class="input-field" autocomplete="new-password" placeholder="留空则保留已保存的 Token" />
-                <span class="form-hint">来自飞书开放平台的事件订阅配置</span>
-              </div>
-              <div class="form-group">
                 <label for="feishuChatId" class="form-label">接收会话 Chat ID</label>
                 <input type="text" id="feishuChatId" class="input-field" placeholder="发送 /start 后自动绑定，也可手动填写" />
               </div>
@@ -358,16 +353,12 @@ export const HomePage: FC = () => {
             </form>
           </div>
 
-          {/* 事件订阅配置 */}
+          {/* 长连接配置 */}
           <div class="form-card" style={{ marginTop: "24px" }}>
-            <h4 class="form-section-title">🔗 事件订阅配置</h4>
+            <h4 class="form-section-title">🔗 长连接事件订阅</h4>
             <div class="form-hint" style={{ background: "var(--bg-primary)", padding: "12px", borderRadius: "8px", marginBottom: "16px" }}>
-              在飞书开放平台为自建应用启用机器人能力，添加事件 <code>im.message.receive_v1</code>，
-              并将下面的 HTTPS 地址填入“请求地址”。应用还需开通发送与接收消息权限并发布版本。
-            </div>
-            <div class="form-group">
-              <label for="feishuEventUrl" class="form-label">事件回调 URL</label>
-              <input type="text" id="feishuEventUrl" class="input-field" readonly />
+              在飞书开放平台的“事件与回调”中选择“使用长连接接收事件”，并添加事件
+              <code>im.message.receive_v1</code>。无需公网域名或回调 URL。
             </div>
           </div>
 
@@ -379,7 +370,7 @@ export const HomePage: FC = () => {
                 <strong>应用状态:</strong> <span id="feishuAppStatus">-</span>
               </div>
               <div class="info-item">
-                <strong>事件 Token:</strong> <span id="feishuTokenStatus">-</span>
+                <strong>长连接:</strong> <span id="feishuConnectionStatus">-</span>
               </div>
               <div class="info-item">
                 <strong>会话绑定:</strong> <span id="feishuBindingStatus">-</span>

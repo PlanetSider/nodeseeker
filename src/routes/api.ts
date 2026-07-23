@@ -4,6 +4,7 @@ import { DatabaseService } from '../services/database';
 import { AuthService } from '../services/auth';
 import { RSSService } from '../services/rss';
 import { FeishuService } from '../services/feishu';
+import { feishuConnectionService } from '../services/feishuConnection';
 import { MatcherService } from '../services/matcher';
 import { createValidationMiddleware, createQueryValidationMiddleware, createParamValidationMiddleware } from '../utils/validation';
 import { createSuccessResponse, createErrorResponse } from '../utils/helpers';
@@ -22,6 +23,15 @@ type Variables = ContextVariables & {
 }
 
 export const apiRoutes = new Hono<{ Variables: Variables }>();
+
+function createSafeConfig(config: any) {
+    const { password, feishu_app_secret, ...safeConfig } = config;
+    delete safeConfig['feishu_verification' + '_token'];
+    return {
+        ...safeConfig,
+        has_feishu_app_secret: !!feishu_app_secret,
+    };
+}
 
 // 公开路由（无需认证）
 apiRoutes.get('/posts', createQueryValidationMiddleware(paginationSchema), async (c) => {
@@ -113,14 +123,7 @@ apiRoutes.get('/config', async (c) => {
             return c.json(createErrorResponse('配置不存在'), 404);
         }
 
-        // 不返回密码
-        const { password, feishu_app_secret, feishu_verification_token, ...safeConfig } = config;
-
-        return c.json(createSuccessResponse({
-            ...safeConfig,
-            has_feishu_app_secret: !!feishu_app_secret,
-            has_feishu_verification_token: !!feishu_verification_token,
-        }));
+        return c.json(createSuccessResponse(createSafeConfig(config)));
     } catch (error) {
         return c.json(createErrorResponse(`获取配置失败: ${error}`), 500);
     }
@@ -138,14 +141,11 @@ apiRoutes.put('/config', createValidationMiddleware(baseConfigUpdateSchema), asy
             return c.json(createErrorResponse('更新配置失败'), 500);
         }
 
-        // 不返回密码
-        const { password, feishu_app_secret, feishu_verification_token, ...safeConfig } = config;
+        if (validatedData.feishu_app_id !== undefined || validatedData.feishu_app_secret !== undefined) {
+            await feishuConnectionService.sync(dbService);
+        }
 
-        return c.json(createSuccessResponse({
-            ...safeConfig,
-            has_feishu_app_secret: !!feishu_app_secret,
-            has_feishu_verification_token: !!feishu_verification_token,
-        }, '配置更新成功'));
+        return c.json(createSuccessResponse(createSafeConfig(config), '配置更新成功'));
     } catch (error) {
         return c.json(createErrorResponse(`更新配置失败: ${error}`), 500);
     }
@@ -321,13 +321,13 @@ apiRoutes.get('/feishu/status', async (c) => {
         const config = dbService.getBaseConfig();
 
         const statusData = {
-            configured: !!(config?.feishu_app_id && config.feishu_app_secret && config.feishu_verification_token),
-            connected: false,
+            configured: !!(config?.feishu_app_id && config.feishu_app_secret),
+            connected: feishuConnectionService.getStatus().state === 'connected',
+            connection: feishuConnectionService.getStatus(),
             bound: !!(config?.feishu_chat_id && config.feishu_user_open_id),
             config: {
                 has_app_id: !!config?.feishu_app_id,
                 has_app_secret: !!config?.feishu_app_secret,
-                has_verification_token: !!config?.feishu_verification_token,
                 has_chat_id: !!config?.feishu_chat_id,
                 bound_user_name: config?.bound_user_name || null,
                 stop_push: config?.stop_push === 1,
@@ -339,9 +339,7 @@ apiRoutes.get('/feishu/status', async (c) => {
             return c.json(createSuccessResponse(statusData, '飞书应用未配置'));
         }
 
-        const service = new FeishuService(dbService, config.feishu_app_id, config.feishu_app_secret);
-        statusData.connected = await service.testConnection();
-        return c.json(createSuccessResponse(statusData, statusData.connected ? '飞书应用连接正常' : '飞书应用连接失败'));
+        return c.json(createSuccessResponse(statusData, statusData.connected ? '飞书长连接正常' : `飞书长连接状态: ${statusData.connection.state}`));
     } catch (error) {
         return c.json(createErrorResponse(`获取 Bot 状态失败: ${error}`), 500);
     }
