@@ -1,6 +1,6 @@
 {
   "name": "nodeseeker",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "type": "module",
   "scripts": {
     "dev": "bun run --hot src/server.ts",

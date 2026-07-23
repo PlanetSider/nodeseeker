@@ -65,6 +65,20 @@ describe('AITranslationService', () => {
         expect(database.recordAITranslationUsage).toHaveBeenCalledWith(10, 5, 15);
     });
 
+    it('accepts OpenAI-compatible base URLs for translation tests', async () => {
+        const urls: string[] = [];
+        globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+            urls.push(input.toString());
+            return Response.json({
+                choices: [{ message: { content: JSON.stringify({ title: '你好世界', content: '这是一段正文。' }) } }],
+            });
+        }) as typeof fetch;
+
+        await new AITranslationService(createDatabaseMock({ api_url: 'https://example.com/v1' }) as any).translatePost(post);
+
+        expect(urls).toEqual(['https://example.com/v1/chat/completions']);
+    });
+
     it('skips translation when the RSS source is not selected', async () => {
         globalThis.fetch = mock(async () => Response.json({})) as typeof fetch;
 
@@ -127,5 +141,13 @@ describe('AITranslationService', () => {
 
         await expect(new AITranslationService(createDatabaseMock() as any).translateWithConfig(post, config as any))
             .rejects.toThrow('invalid model');
+    });
+
+    it('adds endpoint guidance for empty 404 responses', async () => {
+        globalThis.fetch = mock(async () => new Response('', { status: 404, statusText: 'Not Found' })) as typeof fetch;
+        const config = createDatabaseMock({ api_url: 'https://example.com/v1' }).getAITranslationConfig();
+
+        await expect(new AITranslationService(createDatabaseMock() as any).translateWithConfig(post, config as any))
+            .rejects.toThrow('AI API 地址返回 404');
     });
 });

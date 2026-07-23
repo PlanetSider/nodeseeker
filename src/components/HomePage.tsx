@@ -246,8 +246,8 @@ export const HomePage: FC = () => {
               </div>
               <div class="sub-form-group">
                 <label class="sub-form-label">RSS 来源</label>
-                <select id="subRssSource" class="input-field" multiple size={3}></select>
-                <span class="form-hint">可多选；不选择表示全部来源</span>
+                <div id="subRssSource" class="source-multiselect dropdown sub-source-dropdown"></div>
+                <span class="form-hint">下拉多选；选择“全部来源”表示不限制来源</span>
               </div>
             </div>
             {/* 第三行：添加按钮 */}

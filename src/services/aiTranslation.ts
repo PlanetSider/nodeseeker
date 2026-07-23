@@ -15,6 +15,22 @@ interface ChatCompletionResponse {
     };
 }
 
+function getChatCompletionsUrl(apiUrl: string): string {
+    const trimmed = apiUrl.trim().replace(/\/+$/, '');
+    const url = new URL(trimmed);
+    const pathname = url.pathname.replace(/\/+$/, '');
+    if (pathname.endsWith('/chat/completions')) return trimmed;
+    if (pathname === '' || pathname === '/') {
+        url.pathname = '/v1/chat/completions';
+        return url.toString();
+    }
+    if (pathname.endsWith('/v1')) {
+        url.pathname = `${pathname}/chat/completions`;
+        return url.toString();
+    }
+    return trimmed;
+}
+
 export class AITranslationService {
     constructor(private dbService: DatabaseService) {}
 
@@ -40,7 +56,8 @@ export class AITranslationService {
     }
 
     private async requestTranslation(post: Post, config: AITranslationConfig): Promise<TranslatedPostContent> {
-        const response = await fetch(config.api_url, {
+        const requestUrl = getChatCompletionsUrl(config.api_url);
+        const response = await fetch(requestUrl, {
                 method: 'POST',
                 signal: AbortSignal.timeout(30000),
                 headers: {
@@ -70,6 +87,9 @@ export class AITranslationService {
             const plainError = responseText.trim();
             const errorMessage = result?.error?.message
                 || result?.message
+                || (response.status === 404
+                    ? `AI API 地址返回 404，请确认服务支持 Chat Completions：${requestUrl}`
+                    : '')
                 || (plainError && plainError !== 'null' ? plainError : '')
                 || `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
             throw new Error(errorMessage);

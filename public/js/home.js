@@ -359,6 +359,55 @@ document.addEventListener("DOMContentLoaded", function () {
     return escapeHtml(text).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
+  function getSelectedSourceIdsFromDropdown(dropdown) {
+    return Array.from(dropdown?.querySelectorAll("[data-source-option]:checked") || [])
+      .map((input) => Number(input.value))
+      .filter(Boolean);
+  }
+
+  function getSourceSelectionLabel(sourceIds) {
+    if (!sourceIds.length) return "全部来源";
+    const names = sourceIds
+      .map((id) => rssSources.find((source) => source.id === id)?.name)
+      .filter(Boolean);
+    if (names.length <= 2) return names.join("、") || "选择来源";
+    return `${names.slice(0, 2).join("、")} 等 ${names.length} 个来源`;
+  }
+
+  function renderSourceDropdown({ id = "", className = "", selectedIds = [], subscriptionId = "" } = {}) {
+    const selectedSet = new Set(selectedIds.map(Number));
+    return `
+      <div class="source-multiselect dropdown ${className}" ${id ? `id="${id}"` : ""} ${subscriptionId ? `data-subscription-id="${subscriptionId}"` : ""}>
+        <button class="source-multiselect-trigger" type="button" aria-expanded="false">
+          <span class="source-multiselect-label">${escapeHtml(getSourceSelectionLabel(selectedIds))}</span>
+          <span class="source-multiselect-caret">▾</span>
+        </button>
+        <div class="source-multiselect-menu dropdown-menu">
+          <label class="source-multiselect-option">
+            <input type="checkbox" data-source-all value="" ${selectedIds.length === 0 ? "checked" : ""} />
+            全部来源
+          </label>
+          <div class="dropdown-divider"></div>
+          ${rssSources.map((source) => `
+            <label class="source-multiselect-option">
+              <input type="checkbox" data-source-option value="${source.id}" ${selectedSet.has(source.id) ? "checked" : ""} />
+              ${escapeHtml(source.name)}
+            </label>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  function refreshSourceDropdown(dropdown) {
+    const selectedIds = getSelectedSourceIdsFromDropdown(dropdown);
+    const allInput = dropdown?.querySelector("[data-source-all]");
+    if (allInput) allInput.checked = selectedIds.length === 0;
+    const label = dropdown?.querySelector(".source-multiselect-label");
+    if (label) label.textContent = getSourceSelectionLabel(selectedIds);
+    return selectedIds;
+  }
+
   // 分类映射：英文 key -> 中文标题
   const categoryMap = {
     daily: "日常",
@@ -843,13 +892,14 @@ document.addEventListener("DOMContentLoaded", function () {
   let rssSources = [];
 
   function renderRssSourceOptions() {
-    const select = document.getElementById("subRssSource");
-    if (select) {
-      const currentValues = new Set(Array.from(select.selectedOptions).map((option) => option.value));
-      select.innerHTML = rssSources
-        .filter((source) => source.enabled === 1)
-        .map((source) => `<option value="${source.id}" ${currentValues.has(String(source.id)) ? "selected" : ""}>${escapeHtml(source.name)}</option>`)
-        .join("");
+    const addSourceDropdown = document.getElementById("subRssSource");
+    if (addSourceDropdown) {
+      const selectedIds = getSelectedSourceIdsFromDropdown(addSourceDropdown);
+      addSourceDropdown.outerHTML = renderSourceDropdown({
+        id: "subRssSource",
+        className: "sub-source-dropdown",
+        selectedIds,
+      });
     }
     const filter = document.getElementById("filterRssSource");
     if (!filter) return;
@@ -1253,12 +1303,14 @@ document.addEventListener("DOMContentLoaded", function () {
           ${[1, 2, 3].map((index) => renderKeyword(sub, index)).join("")}
         </div>
         <div class="subscription-filters">
-          <label class="subscription-strict-option">
-            来源
-            <select class="input-field subscription-source-select" data-id="${sub.id}" multiple size="3">
-              ${rssSources.map((source) => `<option value="${source.id}" ${(sub.rss_source_ids || []).includes(source.id) ? "selected" : ""}>${escapeHtml(source.name)}</option>`).join("")}
-            </select>
-          </label>
+          <div class="subscription-strict-option">
+            <span>来源</span>
+            ${renderSourceDropdown({
+              className: "subscription-source-select",
+              selectedIds: sub.rss_source_ids || [],
+              subscriptionId: sub.id,
+            })}
+          </div>
           ${sub.creator ? `<span class="tag">👤 ${escapeHtml(sub.creator)}</span>` : ""}
           ${sub.category ? `<span class="tag">📂 ${getCategoryName(sub.category)}</span>` : ""}
         </div>
@@ -1288,22 +1340,6 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     });
 
-    container.querySelectorAll(".subscription-source-select").forEach((select) => {
-      select.addEventListener("change", async () => {
-        const result = await apiRequest(`/api/subscriptions/${select.dataset.id}`, {
-          method: "PUT",
-          body: JSON.stringify({ rss_source_ids: Array.from(select.selectedOptions).map((option) => Number(option.value)) }),
-        });
-        if (result?.success) {
-          Toast.success("订阅来源已更新");
-          loadFilterSubscriptions();
-        } else {
-          Toast.error(result?.message || "更新失败");
-          loadSubscriptions();
-        }
-      });
-    });
-
     // 绑定删除事件
     container.querySelectorAll(".delete-sub-btn").forEach((btn) => {
       btn.addEventListener("click", async () => {
@@ -1324,6 +1360,54 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function initSubscriptions() {
+    const sourceUpdateTimers = new WeakMap();
+
+    document.addEventListener("click", (e) => {
+      const trigger = e.target.closest(".source-multiselect-trigger");
+      const clickedDropdown = e.target.closest(".source-multiselect");
+      document.querySelectorAll(".source-multiselect.open").forEach((dropdown) => {
+        if (dropdown !== clickedDropdown) {
+          dropdown.classList.remove("open");
+          dropdown.querySelector(".source-multiselect-trigger")?.setAttribute("aria-expanded", "false");
+        }
+      });
+      if (!trigger) return;
+      const dropdown = trigger.closest(".source-multiselect");
+      const isOpen = dropdown.classList.toggle("open");
+      trigger.setAttribute("aria-expanded", String(isOpen));
+    });
+
+    document.addEventListener("change", async (e) => {
+      const input = e.target.closest(".source-multiselect input[type='checkbox']");
+      if (!input) return;
+      const dropdown = input.closest(".source-multiselect");
+      if (input.matches("[data-source-all]")) {
+        dropdown.querySelectorAll("[data-source-option]").forEach((option) => { option.checked = false; });
+        input.checked = true;
+      } else if (input.checked) {
+        const allInput = dropdown.querySelector("[data-source-all]");
+        if (allInput) allInput.checked = false;
+      }
+
+      refreshSourceDropdown(dropdown);
+      if (!dropdown.dataset.subscriptionId) return;
+
+      clearTimeout(sourceUpdateTimers.get(dropdown));
+      sourceUpdateTimers.set(dropdown, setTimeout(async () => {
+        const result = await apiRequest(`/api/subscriptions/${dropdown.dataset.subscriptionId}`, {
+          method: "PUT",
+          body: JSON.stringify({ rss_source_ids: getSelectedSourceIdsFromDropdown(dropdown) }),
+        });
+        if (result?.success) {
+          Toast.success("订阅来源已更新");
+          loadFilterSubscriptions();
+        } else {
+          Toast.error(result?.message || "更新失败");
+          loadSubscriptions();
+        }
+      }, 250));
+    });
+
     // 添加订阅
     document.getElementById("addSubForm")?.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -1337,7 +1421,7 @@ document.addEventListener("DOMContentLoaded", function () {
         keyword3_strict: document.getElementById("keyword3Strict").checked ? 1 : 0,
         creator: document.getElementById("subCreator").value.trim() || undefined,
         category: document.getElementById("subCategory").value || undefined,
-        rss_source_ids: Array.from(document.getElementById("subRssSource").selectedOptions).map((option) => Number(option.value)),
+        rss_source_ids: getSelectedSourceIdsFromDropdown(document.getElementById("subRssSource")),
       };
 
       if (!data.keyword1 && !data.keyword2 && !data.keyword3 && !data.creator && !data.category) {
@@ -1353,6 +1437,8 @@ document.addEventListener("DOMContentLoaded", function () {
       if (result?.success) {
         Toast.success("订阅已添加");
         document.getElementById("addSubForm").reset();
+        document.querySelectorAll("#subRssSource [data-source-option]").forEach((option) => { option.checked = false; });
+        refreshSourceDropdown(document.getElementById("subRssSource"));
         loadSubscriptions();
         loadFilterSubscriptions();
         updateStats();
