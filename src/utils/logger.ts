@@ -35,7 +35,7 @@ const TAGS = {
   warn: '[🔔]',
   error: '[❌]',
   rss: '[📰]',
-  telegram: '[📮]',
+  feishu: '[📮]',
   db: '[💾]',
   match: '[🎯]',
   server: '[💻]',
@@ -82,7 +82,7 @@ export const logger = {
   // 分类日志
   rss: (message: string, ...args: any[]) => log('info', TAGS.rss, message, ...args),
   rssDebug: (message: string, ...args: any[]) => log('debug', TAGS.rss, message, ...args),
-  telegram: (message: string, ...args: any[]) => log('info', TAGS.telegram, message, ...args),
+  feishu: (message: string, ...args: any[]) => log('info', TAGS.feishu, message, ...args),
   db: (message: string, ...args: any[]) => log('info', TAGS.db, message, ...args),
   match: (message: string, ...args: any[]) => log('info', TAGS.match, message, ...args),
   server: (message: string, ...args: any[]) => log('info', TAGS.server, message, ...args),

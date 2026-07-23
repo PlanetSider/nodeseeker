@@ -850,95 +850,50 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // ============================================
-  // Telegram 配置
+  // 飞书配置
   // ============================================
-  async function loadTelegramConfig() {
+  async function loadFeishuConfig() {
     const result = await apiRequest("/api/config");
     if (result?.success) {
-      document.getElementById("botToken").value = result.data.bot_token || "";
-      document.getElementById("chatId").value = result.data.chat_id || "";
+      document.getElementById("feishuAppId").value = result.data.feishu_app_id || "";
+      document.getElementById("feishuAppSecret").placeholder = result.data.has_feishu_app_secret ? "已配置，留空则不修改" : "请输入 App Secret";
+      document.getElementById("feishuVerificationToken").placeholder = result.data.has_feishu_verification_token ? "已配置，留空则不修改" : "请输入 Verification Token";
+      document.getElementById("feishuChatId").value = result.data.feishu_chat_id || "";
       document.getElementById("stopPush").checked = result.data.stop_push === 1;
       document.getElementById("onlyTitle").checked = result.data.only_title === 1;
     }
-    // 同时加载交互模式状态
-    await loadTelegramInteractionStatus();
+    document.getElementById("feishuEventUrl").value = `${window.location.origin}/feishu/events`;
+    await loadFeishuStatus();
   }
 
-  async function loadTelegramInteractionStatus() {
-    const result = await apiRequest("/api/webhook/status");
+  async function loadFeishuStatus() {
+    const result = await apiRequest("/api/feishu/status");
     if (!result?.success) return;
 
     const data = result.data;
-    const mode = data.telegram_mode || "disabled";
-    const pollingActive = data.polling_active || false;
-
-    // 同步模式选择器
-    const radio = document.querySelector(`input[name="telegramMode"][value="${mode}"]`);
-    if (radio) radio.checked = true;
-
-    // 切换面板显示
-    updateTelegramModeUI(mode, pollingActive);
-
-    // 更新状态面板
-    const statusPanel = document.getElementById("telegramStatusPanel");
-    if (statusPanel && data.configured) {
+    const statusPanel = document.getElementById("feishuStatusPanel");
+    if (statusPanel) {
       statusPanel.style.display = "block";
-      const botStatus = document.getElementById("telegramBotStatus");
-      const webhookStatus = document.getElementById("telegramWebhookStatus");
-      const bindingStatus = document.getElementById("telegramBindingStatus");
-      if (botStatus) botStatus.textContent = data.connected ? "✅ 已连接" : "❌ 未连接";
-      if (webhookStatus) {
-        if (pollingActive) {
-          webhookStatus.textContent = "🔄 Polling 运行中";
-        } else if (data.webhook_set) {
-          webhookStatus.textContent = "✅ 已设置";
-        } else {
-          webhookStatus.textContent = "❌ 未设置";
-        }
-      }
-      if (bindingStatus) bindingStatus.textContent = data.bound ? "✅ 已绑定" : "❌ 未绑定";
+      document.getElementById("feishuAppStatus").textContent = data.connected ? "✅ 已连接" : "❌ 未连接";
+      document.getElementById("feishuTokenStatus").textContent = data.config.has_verification_token ? "✅ 已配置" : "❌ 未配置";
+      document.getElementById("feishuBindingStatus").textContent = data.bound ? "✅ 已绑定" : "❌ 未绑定";
     }
   }
 
-  function updateTelegramModeUI(mode, pollingActive) {
-    const webhookPanel = document.getElementById("webhookModePanel");
-    const pollingPanel = document.getElementById("pollingModePanel");
-    const startBtn = document.getElementById("startPollingBtn");
-    const stopBtn = document.getElementById("stopPollingBtn");
-    const statusIndicator = document.getElementById("pollingStatusIndicator");
-
-    if (webhookPanel) webhookPanel.style.display = mode === "webhook" ? "block" : "none";
-    if (pollingPanel) pollingPanel.style.display = mode === "polling" ? "block" : "none";
-
-    if (pollingActive) {
-      if (startBtn) startBtn.style.display = "none";
-      if (stopBtn) stopBtn.style.display = "inline-flex";
-      if (statusIndicator) {
-        statusIndicator.textContent = "▶️ Polling 运行中";
-        statusIndicator.style.background = "var(--success-alpha)";
-        statusIndicator.style.color = "var(--success)";
-      }
-    } else {
-      if (startBtn) startBtn.style.display = "inline-flex";
-      if (stopBtn) stopBtn.style.display = "none";
-      if (statusIndicator) {
-        statusIndicator.textContent = "⏹️ Polling 未运行";
-        statusIndicator.style.background = "var(--bg-hover)";
-        statusIndicator.style.color = "";
-      }
-    }
-  }
-
-  function initTelegramConfig() {
-    document.getElementById("telegramConfigForm")?.addEventListener("submit", async (e) => {
+  function initFeishuConfig() {
+    document.getElementById("feishuConfigForm")?.addEventListener("submit", async (e) => {
       e.preventDefault();
 
       const data = {
-        bot_token: document.getElementById("botToken").value.trim(),
-        chat_id: document.getElementById("chatId").value.trim(),
+        feishu_app_id: document.getElementById("feishuAppId").value.trim(),
+        feishu_chat_id: document.getElementById("feishuChatId").value.trim(),
         stop_push: document.getElementById("stopPush").checked ? 1 : 0,
         only_title: document.getElementById("onlyTitle").checked ? 1 : 0,
       };
+      const appSecret = document.getElementById("feishuAppSecret").value.trim();
+      const verificationToken = document.getElementById("feishuVerificationToken").value.trim();
+      if (appSecret) data.feishu_app_secret = appSecret;
+      if (verificationToken) data.feishu_verification_token = verificationToken;
 
       const result = await apiRequest("/api/config", {
         method: "PUT",
@@ -946,121 +901,29 @@ document.addEventListener("DOMContentLoaded", function () {
       });
 
       if (result?.success) {
-        Toast.success("Telegram 配置已保存");
+        Toast.success("飞书配置已保存");
+        document.getElementById("feishuAppSecret").value = "";
+        document.getElementById("feishuVerificationToken").value = "";
+        await loadFeishuConfig();
       } else {
         Toast.error(result?.message || "保存失败");
       }
     });
 
-    document.getElementById("testTelegramBtn")?.addEventListener("click", async () => {
+    document.getElementById("testFeishuBtn")?.addEventListener("click", async () => {
       Toast.info("正在测试连接...");
 
-      // 1. 先测试 Bot 连接
-      const result = await apiRequest("/api/webhook/test-connection", { method: "POST" });
-      if (!result?.success) {
-        Toast.error(result?.message || "连接测试失败");
-        return;
-      }
-
-      // 2. 如果 Chat ID 已配置，发送测试消息
-      const chatId = document.getElementById("chatId").value.trim();
-      if (chatId) {
-        Toast.info("连接成功，正在发送测试消息...");
-        const testResult = await apiRequest("/api/push/test-send", {
-          method: "POST",
-          body: JSON.stringify({ message: "📡 NodeSeeker 推送测试" }),
-        });
-        if (testResult?.success) {
-          Toast.success("连接测试成功，测试消息已发送");
-        } else {
-          Toast.warning("连接成功，但测试消息发送失败：" + (testResult?.message || "未知错误"));
-        }
-      } else {
-        Toast.success("Bot 连接测试成功（未配置 Chat ID，跳过消息测试）");
-      }
-    });
-
-    // 交互模式切换
-    document.querySelectorAll('input[name="telegramMode"]').forEach((radio) => {
-      radio.addEventListener("change", (e) => {
-        const mode = e.target.value;
-        updateTelegramModeUI(mode, false);
-      });
-    });
-
-    // Webhook 表单提交
-    document.getElementById("webhookConfigForm")?.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const webhookUrl = document.getElementById("webhookUrl").value.trim();
-      if (!webhookUrl) {
-        Toast.warning("请输入 Webhook URL");
-        return;
-      }
-
-      Toast.info("正在设置 Webhook...");
-      const result = await apiRequest("/api/webhook/setup", {
-        method: "POST",
-        body: JSON.stringify({ webhook_url: webhookUrl }),
-      });
-
+      const body = {
+        app_id: document.getElementById("feishuAppId").value.trim(),
+        chat_id: document.getElementById("feishuChatId").value.trim(),
+      };
+      const appSecret = document.getElementById("feishuAppSecret").value.trim();
+      if (appSecret) body.app_secret = appSecret;
+      const result = await apiRequest("/api/feishu/test", { method: "POST", body: JSON.stringify(body) });
       if (result?.success) {
-        Toast.success("Webhook 设置成功");
-        // 保存模式
-        await apiRequest("/api/config", {
-          method: "PUT",
-          body: JSON.stringify({ telegram_mode: "webhook" }),
-        });
-        await loadTelegramInteractionStatus();
-      } else {
-        Toast.error(result?.message || "Webhook 设置失败");
-      }
-    });
-
-    // 清除 Webhook
-    document.getElementById("clearWebhookBtn")?.addEventListener("click", async () => {
-      Toast.info("正在清除 Webhook...");
-      const result = await apiRequest("/api/webhook/clear-webhook", { method: "POST" });
-      if (result?.success) {
-        Toast.success("Webhook 已清除");
-        await loadTelegramInteractionStatus();
-      } else {
-        Toast.error(result?.message || "清除失败");
-      }
-    });
-
-    // 测试 Webhook 连接
-    document.getElementById("testWebhookBtn")?.addEventListener("click", async () => {
-      Toast.info("正在测试 Webhook 连接...");
-      const result = await apiRequest("/api/webhook/test-connection", { method: "POST" });
-      if (result?.success) {
-        Toast.success("Bot 连接正常");
+        Toast.success(result.message || "飞书连接测试成功");
       } else {
         Toast.error(result?.message || "连接测试失败");
-      }
-    });
-
-    // 启动 Polling
-    document.getElementById("startPollingBtn")?.addEventListener("click", async () => {
-      Toast.info("正在启动 Polling...");
-      const result = await apiRequest("/api/webhook/start-polling", { method: "POST" });
-      if (result?.success) {
-        Toast.success("Polling 已启动");
-        updateTelegramModeUI("polling", true);
-        await loadTelegramInteractionStatus();
-      } else {
-        Toast.error(result?.message || "启动失败");
-      }
-    });
-
-    // 停止 Polling
-    document.getElementById("stopPollingBtn")?.addEventListener("click", async () => {
-      Toast.info("正在停止 Polling...");
-      const result = await apiRequest("/api/webhook/stop-polling", { method: "POST" });
-      if (result?.success) {
-        Toast.success("Polling 已停止");
-        updateTelegramModeUI("polling", false);
-      } else {
-        Toast.error(result?.message || "停止失败");
       }
     });
   }
@@ -1298,8 +1161,8 @@ document.addEventListener("DOMContentLoaded", function () {
           loadSubscriptions();
         } else if (drawerName === "rss") {
           loadRssConfig();
-        } else if (drawerName === "telegram") {
-          loadTelegramConfig();
+        } else if (drawerName === "feishu") {
+          loadFeishuConfig();
         } else if (drawerName === "stats") {
           loadChartData(currentChartDays);
         }
@@ -1460,7 +1323,7 @@ document.addEventListener("DOMContentLoaded", function () {
     Drawer.init();
     initFilters();
     initRssConfig();
-    initTelegramConfig();
+    initFeishuConfig();
     initSubscriptions();
     initSettingsDropdown();
     initLoginModal();

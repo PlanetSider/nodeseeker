@@ -120,7 +120,6 @@ export class AuthService {
       const config = this.dbService.createBaseConfig({
         username: request.username,
         password: hashedPassword,
-        chat_id: '', // 初始为空，等待 Telegram 绑定
         stop_push: 0,
         only_title: 0
       });

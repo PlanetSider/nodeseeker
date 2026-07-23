@@ -3,9 +3,7 @@ version: '3.8'
 
 services:
   nodeseeker:
-    build: 
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/planetsider/nodeseeker:latest
     container_name: nodeseeker-app-prod
     restart: unless-stopped
     ports:
@@ -16,8 +14,6 @@ services:
       - HOST=0.0.0.0
       - DATABASE_PATH=/usr/src/app/data/nodeseeker.db
       - RSS_URL=${RSS_URL:-https://rss.nodeseek.com/}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL}
       - CORS_ORIGINS=${CORS_ORIGINS:-https://your-domain.com}
       - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:

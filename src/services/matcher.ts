@@ -1,5 +1,5 @@
 import { DatabaseService } from './database';
-import { TelegramPushService } from './telegram/push';
+import { FeishuService } from './feishu';
 import { logger } from '../utils/logger';
 import type { Post, KeywordSub, BaseConfig, PushResult } from '../types';
 
@@ -19,7 +19,7 @@ export interface MatchResult {
 export class MatcherService {
   constructor(
     private dbService: DatabaseService,
-    private telegramService: TelegramPushService | null = null
+    private feishuService: FeishuService | null = null
   ) {}
 
   /**
@@ -259,7 +259,7 @@ export class MatcherService {
   }
 
   /**
-   * 处理待处理的文章：先匹配订阅，再尝试推送 Telegram
+   * 处理待处理的文章：先匹配订阅，再尝试推送飞书
    * 
    * push_status 语义：
    *   0 = 待处理（未比对过订阅）
@@ -338,16 +338,16 @@ export class MatcherService {
       }
     }
 
-    // 第三步：尝试推送 Telegram
+    // 第三步：尝试推送飞书
     if (config.stop_push === 1) {
       logger.match('推送已停止');
-    } else if (this.telegramService && config.bot_token && config.chat_id) {
+    } else if (this.feishuService && config.feishu_app_id && config.feishu_chat_id) {
       let pushSuccess = 0;
       let pushFail = 0;
 
       for (const { post, subscription } of matchedPostsForPush) {
         try {
-          const success = await this.telegramService.pushPost(post, subscription);
+          const success = await this.feishuService.pushPost(post, subscription);
           if (success) pushSuccess++;
           else pushFail++;
 
@@ -361,7 +361,7 @@ export class MatcherService {
       }
       
       if (matchedPostsForPush.length > 0) {
-        logger.telegram(`推送: ${pushSuccess} 成功, ${pushFail} 失败`);
+        logger.feishu(`推送: ${pushSuccess} 成功, ${pushFail} 失败`);
       }
     }
     return result;
@@ -415,8 +415,8 @@ export class MatcherService {
     message: string;
   }> {
     try {
-      if (!this.telegramService) {
-        return { success: false, message: '未配置 Telegram 服务' };
+      if (!this.feishuService) {
+        return { success: false, message: '未配置飞书服务' };
       }
 
       const post = this.dbService.getPostByPostId(postId);
@@ -430,7 +430,7 @@ export class MatcherService {
         return { success: false, message: '订阅不存在' };
       }
 
-      const pushSuccess = await this.telegramService.pushPost(post, subscription);
+      const pushSuccess = await this.feishuService.pushPost(post, subscription);
 
       if (pushSuccess) {
         return {

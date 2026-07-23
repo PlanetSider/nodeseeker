@@ -20,9 +20,6 @@ const envSchema = z.object({
     .transform((val) => val !== "false")
     .default("true"),
 
-  // Telegram (Optional)
-  TELEGRAM_WEBHOOK_URL: z.string().url().optional(),
-
   // CORS
   CORS_ORIGINS: z.string().default("http://localhost:3010"),
 });

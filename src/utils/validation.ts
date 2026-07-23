@@ -4,8 +4,11 @@ import { z } from 'zod';
 export const baseConfigSchema = z.object({
     username: z.string().min(1, '用户名不能为空').max(50, '用户名不能超过50个字符'),
     password: z.string().min(6, '密码至少6个字符').max(100, '密码不能超过100个字符'),
-    bot_token: z.string().optional(),
-    chat_id: z.string().min(1, 'Chat ID不能为空'),
+    feishu_app_id: z.string().optional(),
+    feishu_app_secret: z.string().optional(),
+    feishu_verification_token: z.string().optional(),
+    feishu_chat_id: z.string().optional(),
+    feishu_user_open_id: z.string().optional(),
     bound_user_name: z.string().optional(),
     bound_user_username: z.string().optional(),
     stop_push: z.number().int().min(0).max(1).default(0),
@@ -16,8 +19,11 @@ export const baseConfigSchema = z.object({
 export const baseConfigUpdateSchema = z.object({
     username: z.string().min(1).max(50).optional(),
     password: z.string().min(6).max(100).optional(),
-    bot_token: z.string().optional(),
-    chat_id: z.string().optional(),
+    feishu_app_id: z.string().optional(),
+    feishu_app_secret: z.string().optional(),
+    feishu_verification_token: z.string().optional(),
+    feishu_chat_id: z.string().optional(),
+    feishu_user_open_id: z.string().optional(),
     bound_user_name: z.string().optional(),
     bound_user_username: z.string().optional(),
     stop_push: z.union([z.number().int().min(0).max(1), z.boolean().transform(val => val ? 1 : 0)]).optional(),
@@ -79,15 +85,6 @@ export const initSystemSchema = z.object({
     path: ['confirmPassword'],
 });
 
-// Bot Token 验证 Schema
-export const botTokenSchema = z.object({
-    bot_token: z.string().min(1, 'Bot Token不能为空').regex(
-        /^\d+:[A-Za-z0-9_-]+$/,
-        'Bot Token格式不正确'
-    ),
-    webhook_url: z.string().url('Webhook URL 格式不正确').optional(),
-});
-
 // 分页参数验证 Schema
 export const paginationSchema = z.object({
     page: z.coerce.number().int().min(1).default(1),
@@ -104,15 +101,6 @@ export const paginationSchema = z.object({
 // ID 参数验证 Schema
 export const idParamSchema = z.object({
     id: z.coerce.number().int().positive('ID必须是正整数'),
-});
-
-// Telegram 用户验证 Schema
-export const telegramUserSchema = z.object({
-    id: z.number().int().positive(),
-    first_name: z.string().min(1),
-    last_name: z.string().optional(),
-    username: z.string().optional(),
-    language_code: z.string().optional(),
 });
 
 // RSS 配置验证 Schema
@@ -140,15 +128,6 @@ export const dateRangeSchema = z.object({
 }).refine((data) => new Date(data.startDate) <= new Date(data.endDate), {
     message: '开始日期不能晚于结束日期',
     path: ['endDate'],
-});
-
-// Telegram 命令验证 Schema
-export const telegramCommandSchema = z.object({
-    command: z.string().min(1),
-    args: z.array(z.string()).default([]),
-    chatId: z.number().int(),
-    userId: z.number().int(),
-    username: z.string().optional(),
 });
 
 // 验证工具函数

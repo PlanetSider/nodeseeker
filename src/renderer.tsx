@@ -9,8 +9,8 @@ export const renderer = jsxRenderer(({ children }) => {
         <meta name="theme-color" content="#3b82f6" />
         <meta name="background-color" content="#0f172a" />
         <meta name="color-scheme" content="dark light" />
-        <meta name="description" content="NodeSeek 社区 RSS 监控和 Telegram 推送通知系统" />
-        <meta name="keywords" content="NodeSeek, RSS, 监控, Telegram, 推送" />
+        <meta name="description" content="NodeSeek 社区 RSS 监控和飞书推送通知系统" />
+        <meta name="keywords" content="NodeSeek, RSS, 监控, 飞书, 推送" />
         <meta name="author" content="NodeSeeker" />
         <meta name="robots" content="index, follow" />
         
@@ -47,14 +47,14 @@ export const renderer = jsxRenderer(({ children }) => {
         {/* Open Graph */}
         <meta property="og:type" content="website" />
         <meta property="og:title" content="NodeSeeker RSS 监控" />
-        <meta property="og:description" content="NodeSeek 社区 RSS 监控和 Telegram 推送通知系统" />
+        <meta property="og:description" content="NodeSeek 社区 RSS 监控和飞书推送通知系统" />
         <meta property="og:image" content="/icons/og-image.png" />
         <meta property="og:locale" content="zh_CN" />
         
         {/* Twitter Card */}
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="NodeSeeker RSS 监控" />
-        <meta name="twitter:description" content="NodeSeek 社区 RSS 监控和 Telegram 推送通知系统" />
+        <meta name="twitter:description" content="NodeSeek 社区 RSS 监控和飞书推送通知系统" />
         <meta name="twitter:image" content="/icons/og-image.png" />
         
         <title>NodeSeek RSS 监控</title>

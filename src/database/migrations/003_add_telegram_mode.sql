@@ -1,3 +1,3 @@
--- 添加 Telegram 交互模式配置字段到 base_config 表
--- 可选值: 'disabled' (默认), 'webhook', 'polling'
-ALTER TABLE base_config ADD COLUMN telegram_mode TEXT DEFAULT 'disabled';
+-- 历史迁移占位：旧版本用于 Telegram 交互模式。
+-- 飞书事件订阅不需要本地交互模式，新安装不再添加该字段。
+SELECT 1;

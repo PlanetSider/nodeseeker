@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS base_config (
   username TEXT NOT NULL,
   password TEXT NOT NULL,
   bot_token TEXT DEFAULT NULL,
-  chat_id TEXT NOT NULL,
+  chat_id TEXT DEFAULT NULL,
   bound_user_name TEXT DEFAULT NULL,
   bound_user_username TEXT DEFAULT NULL,
   stop_push INTEGER DEFAULT 0,

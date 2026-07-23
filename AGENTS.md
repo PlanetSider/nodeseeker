@@ -2,7 +2,7 @@
 
 ## Overview
 
-NodeSeeker Docker is a Bun + Hono.js + SQLite RSS monitoring and Telegram push notification system for the NodeSeek community forum. Single fullstack application (not a monorepo).
+NodeSeeker Docker is a Bun + Hono.js + SQLite RSS monitoring and Feishu push notification system for the NodeSeek community forum. Single fullstack application (not a monorepo).
 
 ## Runtime
 
@@ -65,7 +65,7 @@ NodeSeeker Docker is a Bun + Hono.js + SQLite RSS monitoring and Telegram push n
 ### Logging
 - Use `logger` utility with category methods:
   - `logger.info()`, `logger.warn()`, `logger.error()`, `logger.debug()`
-  - `logger.rss()`, `logger.telegram()`, `logger.db()`, `logger.match()`
+  - `logger.rss()`, `logger.feishu()`, `logger.db()`, `logger.match()`
   - `logger.server()`, `logger.scheduler()`
 - Set `LOG_LEVEL=debug` for verbose output
 
@@ -81,7 +81,7 @@ src/
 ├── config/          # Configuration (env, database, server)
 ├── database/        # Migration scripts
 ├── routes/          # Hono API routes
-├── services/        # Business logic (database, rss, telegram, auth, etc.)
+├── services/        # Business logic (database, rss, feishu, auth, etc.)
 ├── components/      # React components
 ├── types/           # TypeScript type definitions
 └── utils/           # Utilities (logger, validation, helpers)
@@ -103,7 +103,6 @@ Key variables in `.env`:
 - `HOST=0.0.0.0` - Bind address
 - `DATABASE_PATH=./data/nodeseeker.db` - SQLite location
 - `RSS_URL=https://rss.nodeseek.com/` - RSS source
-- `TELEGRAM_BOT_TOKEN` - Optional bot token
 - `LOG_LEVEL=info` - Logging verbosity
 
 ## Development Workflow
@@ -120,5 +119,5 @@ Key variables in `.env`:
 - Database is SQLite at `./data/nodeseeker.db`
 - Restart dev server after `bun install` (hot reload doesn't catch new deps)
 - RSS cron fetches every minute automatically in dev mode
-- Telegram Bot Token is optional for basic dev usage
+- Feishu App credentials are optional for basic dev usage and configured in the web UI
 - No ESLint/Biome - type checking happens at build time

@@ -53,7 +53,7 @@ async function resetUser() {
       db.query('DELETE FROM sessions').run();
       console.log('✅ 已清除所有登录会话');
 
-      // 重置 base_config 中的用户数据（保留其他配置如 bot_token 等）
+      // 重置 base_config 中的用户数据（保留飞书、RSS 等配置）
       db.query(`
         UPDATE base_config 
         SET username = '', 

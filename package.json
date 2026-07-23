@@ -1,5 +1,6 @@
 {
   "name": "nodeseeker",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "bun run --hot src/server.ts",
@@ -13,7 +14,6 @@
   "dependencies": {
     "hono": "^4.9.2",
     "node-cron": "^4.2.1",
-    "grammy": "^1.30.0",
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
     "zod": "^3.22.4"

@@ -1,11 +1,11 @@
 # NodeSeeker Docker
 
-[![Docker Build](https://github.com/ljnchn/NodeSeeker-docker/actions/workflows/docker-build.yml/badge.svg)](https://github.com/ljnchn/NodeSeeker-docker/actions/workflows/docker-build.yml)
+[![Docker Build](https://github.com/PlanetSider/nodeseeker/actions/workflows/docker-build.yml/badge.svg)](https://github.com/PlanetSider/nodeseeker/actions/workflows/docker-build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker Hub](https://img.shields.io/docker/v/ersichub/nodeseeker?label=Docker%20Hub)](https://hub.docker.com/r/ersichub/nodeseeker)
+[![GHCR](https://img.shields.io/badge/GHCR-nodeseeker-blue)](https://github.com/PlanetSider/nodeseeker/pkgs/container/nodeseeker)
 [![Bun](https://img.shields.io/badge/Bun-1.0+-ff69b4.svg)](https://bun.sh/)
 
-基于 **Bun + Hono.js + SQLite** 的 NodeSeek 社区 RSS 监控与 Telegram 推送系统。
+基于 **Bun + Hono.js + SQLite** 的 NodeSeek 社区 RSS 监控与飞书推送系统。
 
 ## ✨ 功能特性
 
@@ -13,7 +13,7 @@
 |------|------|
 | 🔄 自动 RSS 抓取 | 定时抓取 NodeSeek 社区 RSS，支持自定义间隔与代理 |
 | 🎯 智能关键词匹配 | 多关键词组合 + 正则表达式，按创建者/分类过滤 |
-| 📱 Telegram 推送 | Bot 实时推送匹配文章，支持命令管理订阅 |
+| 📱 飞书推送 | 自建应用机器人实时推送匹配文章，支持命令管理订阅 |
 | 🌐 Web 控制台 | RESTful API + 可视化管理界面 |
 | 🔐 安全认证 | JWT 认证 + 密码加密存储 |
 | 📊 实时统计 | 推送统计与系统监控 |
@@ -28,7 +28,7 @@ docker run -d \
   --name nodeseeker \
   -p 3010:3010 \
   -v nodeseeker_data:/usr/src/app/data \
-  ersichub/nodeseeker:latest
+  ghcr.io/planetsider/nodeseeker:latest
 ```
 
 访问 http://localhost:3010，首次使用时创建管理员账户即可。
@@ -36,8 +36,8 @@ docker run -d \
 ### Docker Compose
 
 ```bash
-git clone https://github.com/ljnchn/NodeSeeker-docker.git
-cd NodeSeeker-docker
+git clone https://github.com/PlanetSider/nodeseeker.git
+cd nodeseeker
 
 # （可选）配置环境变量
 cp .env.example .env
@@ -91,14 +91,16 @@ bun test             # 运行测试
 ## 🔧 初始化配置
 
 1. 访问 http://localhost:3010，创建管理员账户
-2. **配置 Telegram Bot**（可选）：
-   - 在 Telegram 中通过 [@BotFather](https://t.me/BotFather) 创建 Bot 并获取 Token
-   - 在控制台配置 Bot Token，向 Bot 发送 `/start` 完成绑定
+2. **配置飞书机器人**（可选）：
+   - 在[飞书开放平台](https://open.feishu.cn/app)创建企业自建应用并启用机器人能力
+   - 在控制台填写 App ID、App Secret 和事件订阅 Verification Token
+   - 在飞书开放平台添加 `im.message.receive_v1` 事件，将 `https://你的域名/feishu/events` 配置为请求地址
+   - 开通机器人发送、接收消息权限并发布应用版本，然后向机器人发送 `/start` 完成绑定
 3. **配置 RSS 源**（可选）：
    - 控制台 → 基础设置 → RSS 抓取设置
    - 可修改源地址、间隔、代理，支持 **测试连接**
 
-## 🤖 Telegram Bot 命令
+## 🤖 飞书机器人命令
 
 | 命令 | 说明 |
 |------|------|
@@ -108,6 +110,8 @@ bun test             # 运行测试
 | `/del 订阅ID` | 删除订阅 |
 | `/post` | 查看最近文章 |
 | `/stop` / `/resume` | 停止 / 恢复推送 |
+| `/getme` | 查看绑定信息 |
+| `/unbind` | 解除绑定 |
 
 <details>
 <summary>关键词匹配格式</summary>
@@ -147,7 +151,7 @@ src/
 |------|----------|
 | 端口冲突 | 修改 `.env` 中的 `PORT` |
 | 数据库权限 | 确保 `data/` 目录有写权限 |
-| Telegram Bot 无响应 | 检查 Token 并发送 `/start` 绑定 |
+| 飞书机器人无响应 | 检查应用是否发布、权限和事件订阅是否生效，然后发送 `/start` |
 | RSS 抓取失败 | 检查网络 / RSS 源可用性 / 代理设置 |
 | RSS 配置不生效 | 修改间隔后点击 **重启任务** |
 
@@ -168,7 +172,7 @@ curl http://localhost:3010/health # 健康检查
 
 ## 🙏 技术栈
 
-[Bun](https://bun.sh/) · [Hono.js](https://hono.dev/) · [SQLite](https://sqlite.org/) · [grammY](https://grammy.dev/)
+[Bun](https://bun.sh/) · [Hono.js](https://hono.dev/) · [SQLite](https://sqlite.org/) · [飞书开放平台](https://open.feishu.cn/)
 
 ## 📄 许可证
 

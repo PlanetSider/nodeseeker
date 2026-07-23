@@ -10,12 +10,12 @@ RUN apt-get update && apt-get install -y \
 # 安装依赖阶段
 FROM base AS install
 RUN mkdir -p /temp/dev
-COPY package.json bun.lockb* /temp/dev/
+COPY package.json bun.lock /temp/dev/
 RUN cd /temp/dev && bun install --frozen-lockfile
 
 # 如果有生产依赖，可以单独安装
 RUN mkdir -p /temp/prod
-COPY package.json bun.lockb* /temp/prod/
+COPY package.json bun.lock /temp/prod/
 RUN cd /temp/prod && bun install --frozen-lockfile --production
 
 # 预发布阶段 - 复制源代码并构建

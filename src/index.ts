@@ -12,9 +12,7 @@ import { logger } from './utils/logger';
 // 导入路由
 import { authRoutes } from './routes/auth';
 import { apiRoutes } from './routes/api';
-import { telegramRoutes } from './routes/telegram';
-import { telegramPushRoutes } from './routes/telegramPush';
-import { telegramWebhookRoutes } from './routes/telegramWebhook';
+import { feishuRoutes } from './routes/feishu';
 import { pageRoutes } from './routes/pages';
 
 // 类型定义
@@ -427,9 +425,7 @@ app.post('/api/scheduler/rss/run', async (c) => {
 // 路由注册
 app.route('/auth', authRoutes);
 app.route('/api', apiRoutes);
-app.route('/telegram', telegramRoutes);
-app.route('/api/push', telegramPushRoutes);
-app.route('/api/webhook', telegramWebhookRoutes);
+app.route('/feishu', feishuRoutes);
 app.route('/', pageRoutes);
 
 // 默认 RSS 配置

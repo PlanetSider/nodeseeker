@@ -3,8 +3,11 @@ export interface BaseConfig {
   id?: number;
   username: string;
   password: string;
-  bot_token?: string;
-  chat_id: string;
+  feishu_app_id?: string;
+  feishu_app_secret?: string;
+  feishu_verification_token?: string;
+  feishu_chat_id?: string;
+  feishu_user_open_id?: string;
   bound_user_name?: string;
   bound_user_username?: string;
   stop_push: number;
@@ -12,7 +15,6 @@ export interface BaseConfig {
   rss_url?: string;
   rss_interval_seconds?: number;
   rss_proxy?: string;
-  telegram_mode?: string; // 'disabled' | 'webhook' | 'polling'
   created_at?: string;
   updated_at?: string;
 }
@@ -109,15 +111,6 @@ export interface AuthVerification {
   message?: string;
 }
 
-// Telegram 用户接口
-export interface TelegramUser {
-  id: number;
-  first_name: string;
-  last_name?: string;
-  username?: string;
-  language_code?: string;
-}
-
 // 推送结果接口
 export interface PushResult {
   pushed: number;
@@ -169,10 +162,11 @@ export interface DatabaseStats {
   last_update: string | null;
 }
 
-// Telegram Bot 配置接口
-export interface TelegramBotConfig {
-  token: string;
-  webhookUrl?: string;
+// 飞书应用配置接口
+export interface FeishuBotConfig {
+  appId: string;
+  appSecret: string;
+  verificationToken: string;
   chatId?: string;
 }
 
@@ -216,9 +210,9 @@ export interface JobConfig {
     cronExpression: string;
     retentionDays: number;
   };
-  telegram: {
-    botToken?: string;
-    webhookUrl?: string;
+  feishu: {
+    appId?: string;
+    appSecret?: string;
   };
   rss: {
     url: string;
@@ -266,6 +260,5 @@ export interface EnvVars {
   DATABASE_PATH: string;
   RSS_TIMEOUT: number;
   RSS_CHECK_ENABLED: boolean;
-  TELEGRAM_WEBHOOK_URL?: string;
   CORS_ORIGINS: string;
 }

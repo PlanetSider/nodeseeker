@@ -44,8 +44,8 @@ export const HomePage: FC = () => {
                 <button class="dropdown-item" data-drawer="rss">
                   <span>📡</span> RSS 配置
                 </button>
-                <button class="dropdown-item" data-drawer="telegram">
-                  <span>🤖</span> Telegram
+                <button class="dropdown-item" data-drawer="feishu">
+                  <span>🤖</span> 飞书
                 </button>
                 <div class="dropdown-divider"></div>
                 <button class="dropdown-item text-danger" id="logoutBtn">
@@ -297,11 +297,11 @@ export const HomePage: FC = () => {
         </div>
       </div>
 
-      {/* Telegram 配置抽屉 */}
-      <div id="telegramDrawer" class="drawer drawer-large" style="display: none;">
+      {/* 飞书配置抽屉 */}
+      <div id="feishuDrawer" class="drawer drawer-large" style="display: none;">
         <div class="drawer-header">
-          <h3 class="drawer-title">Telegram 配置</h3>
-          <button class="drawer-close" data-drawer="telegram">
+          <h3 class="drawer-title">飞书配置</h3>
+          <button class="drawer-close" data-drawer="feishu">
             <svg viewBox="0 0 20 20" fill="currentColor">
               <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
             </svg>
@@ -311,23 +311,30 @@ export const HomePage: FC = () => {
           {/* 推送服务配置 */}
           <div class="form-card">
             <h4 class="form-section-title">🚀 推送服务配置</h4>
-            <form id="telegramConfigForm" class="form-stack">
+            <form id="feishuConfigForm" class="form-stack">
               <div class="form-group">
-                <label for="botToken" class="form-label">Bot Token</label>
-                <input type="text" id="botToken" class="input-field" placeholder="从 @BotFather 获取" />
-                <span class="form-hint">格式: 123456:ABC-DEF...</span>
+                <label for="feishuAppId" class="form-label">App ID</label>
+                <input type="text" id="feishuAppId" class="input-field" placeholder="cli_xxxxxxxxxxxxx" />
               </div>
               <div class="form-group">
-                <label for="chatId" class="form-label">用户 Chat ID</label>
-                <input type="text" id="chatId" class="input-field" placeholder="用户或群组的 Chat ID" />
-                <span class="form-hint">可通过 /start 命令自动获取（需开启交互服务）</span>
+                <label for="feishuAppSecret" class="form-label">App Secret</label>
+                <input type="password" id="feishuAppSecret" class="input-field" autocomplete="new-password" placeholder="留空则保留已保存的 Secret" />
+              </div>
+              <div class="form-group">
+                <label for="feishuVerificationToken" class="form-label">Verification Token</label>
+                <input type="password" id="feishuVerificationToken" class="input-field" autocomplete="new-password" placeholder="留空则保留已保存的 Token" />
+                <span class="form-hint">来自飞书开放平台的事件订阅配置</span>
+              </div>
+              <div class="form-group">
+                <label for="feishuChatId" class="form-label">接收会话 Chat ID</label>
+                <input type="text" id="feishuChatId" class="input-field" placeholder="发送 /start 后自动绑定，也可手动填写" />
               </div>
               <div class="form-group">
                 <div class="checkbox-wrapper">
                   <input type="checkbox" id="stopPush" />
                   <div class="checkbox-content">
                     <div class="checkbox-label">停止推送</div>
-                    <div class="checkbox-description">暂停所有 Telegram 消息推送</div>
+                    <div class="checkbox-description">暂停所有飞书消息推送</div>
                   </div>
                 </div>
               </div>
@@ -341,7 +348,7 @@ export const HomePage: FC = () => {
                 </div>
               </div>
               <div class="form-actions">
-                <button type="button" id="testTelegramBtn" class="btn btn-secondary">
+                <button type="button" id="testFeishuBtn" class="btn btn-secondary">
                   测试连接
                 </button>
                 <button type="submit" class="btn btn-primary">
@@ -351,83 +358,31 @@ export const HomePage: FC = () => {
             </form>
           </div>
 
-          {/* 交互服务配置 */}
+          {/* 事件订阅配置 */}
           <div class="form-card" style={{ marginTop: "24px" }}>
-            <h4 class="form-section-title">🔗 交互服务配置（可选）</h4>
+            <h4 class="form-section-title">🔗 事件订阅配置</h4>
             <div class="form-hint" style={{ background: "var(--bg-primary)", padding: "12px", borderRadius: "8px", marginBottom: "16px" }}>
-              <strong>说明：</strong>交互服务允许通过 Telegram Bot 命令管理订阅、查看文章等。
-              可以选择 Webhook 模式（需要 HTTPS 公网域名）或 Polling 模式（无需公网，适合内网部署）。
+              在飞书开放平台为自建应用启用机器人能力，添加事件 <code>im.message.receive_v1</code>，
+              并将下面的 HTTPS 地址填入“请求地址”。应用还需开通发送与接收消息权限并发布版本。
             </div>
-            {/* 模式选择 */}
-            <div class="form-group" style={{ marginBottom: "16px" }}>
-              <label class="form-label">交互模式</label>
-              <div class="mode-selector" id="telegramModeSelector">
-                <label class="mode-option">
-                  <input type="radio" name="telegramMode" value="disabled" checked />
-                  <span class="mode-label">🚫 关闭</span>
-                </label>
-                <label class="mode-option">
-                  <input type="radio" name="telegramMode" value="polling" />
-                  <span class="mode-label">🔄 Polling</span>
-                </label>
-                <label class="mode-option">
-                  <input type="radio" name="telegramMode" value="webhook" />
-                  <span class="mode-label">🔗 Webhook</span>
-                </label>
-              </div>
-            </div>
-            {/* Webhook 模式内容 */}
-            <div id="webhookModePanel" style="display: none;">
-              <form id="webhookConfigForm" class="form-stack">
-                <div class="form-group">
-                  <label for="webhookUrl" class="form-label">Webhook URL</label>
-                  <input type="url" id="webhookUrl" class="input-field" placeholder="https://your-domain.com/telegram/webhook" />
-                  <span class="form-hint">需要 HTTPS，用于接收 Telegram 命令</span>
-                </div>
-                <div class="form-actions">
-                  <button type="button" id="testWebhookBtn" class="btn btn-secondary">
-                    测试连接
-                  </button>
-                  <button type="button" id="clearWebhookBtn" class="btn btn-danger">
-                    清除 Webhook
-                  </button>
-                  <button type="submit" class="btn btn-primary">
-                    设置 Webhook
-                  </button>
-                </div>
-              </form>
-            </div>
-            {/* Polling 模式内容 */}
-            <div id="pollingModePanel" style="display: none;">
-              <div class="form-hint" style={{ background: "var(--bg-primary)", padding: "12px", borderRadius: "8px", marginBottom: "12px" }}>
-                Polling 模式不需要公网域名，服务会主动向 Telegram 服务器轮询消息。适合内网或 NAT 环境。
-              </div>
-              <div id="pollingStatusIndicator" class="form-hint" style={{ padding: "10px 12px", borderRadius: "8px", marginBottom: "12px", background: "var(--bg-hover)", fontWeight: "500" }}>
-                ⏹️ Polling 未运行
-              </div>
-              <div class="form-actions">
-                <button type="button" id="startPollingBtn" class="btn btn-primary">
-                  ▶️ 启动 Polling
-                </button>
-                <button type="button" id="stopPollingBtn" class="btn btn-danger" style="display: none;">
-                  ⏹️ 停止 Polling
-                </button>
-              </div>
+            <div class="form-group">
+              <label for="feishuEventUrl" class="form-label">事件回调 URL</label>
+              <input type="text" id="feishuEventUrl" class="input-field" readonly />
             </div>
           </div>
 
           {/* 状态信息 */}
-          <div id="telegramStatusPanel" class="form-card" style={{ marginTop: "24px", display: "none" }}>
+          <div id="feishuStatusPanel" class="form-card" style={{ marginTop: "24px", display: "none" }}>
             <h4 class="form-section-title">📊 服务状态</h4>
             <div class="info-grid">
               <div class="info-item">
-                <strong>Bot 状态:</strong> <span id="telegramBotStatus">-</span>
+                <strong>应用状态:</strong> <span id="feishuAppStatus">-</span>
               </div>
               <div class="info-item">
-                <strong>Webhook 状态:</strong> <span id="telegramWebhookStatus">-</span>
+                <strong>事件 Token:</strong> <span id="feishuTokenStatus">-</span>
               </div>
               <div class="info-item">
-                <strong>用户绑定:</strong> <span id="telegramBindingStatus">-</span>
+                <strong>会话绑定:</strong> <span id="feishuBindingStatus">-</span>
               </div>
             </div>
           </div>

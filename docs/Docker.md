@@ -33,19 +33,12 @@ docker-compose logs -f nodeseeker
 
 ### 生产环境
 
-1. 设置环境变量：
-
-```bash
-export JWT_SECRET="your-super-secret-jwt-key"
-export TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
-export TELEGRAM_WEBHOOK_URL="https://your-domain.com/telegram/webhook"
-```
-
-2. 部署应用：
+1. 部署应用：
 
 ```bash
 # 使用生产配置启动
-docker-compose -f docker-compose.prod.yml up --build -d
+docker-compose -f docker-compose.prod.yml pull
+docker-compose -f docker-compose.prod.yml up -d
 
 # 查看服务状态
 docker-compose -f docker-compose.prod.yml ps
@@ -98,13 +91,9 @@ docker-compose down
 
 ## 配置说明
 
-### 环境变量
+### 飞书配置
 
-生产环境需要设置以下环境变量：
-
-- `JWT_SECRET` - JWT 密钥（必需）
-- `TELEGRAM_BOT_TOKEN` - Telegram 机器人令牌（可选）
-- `TELEGRAM_WEBHOOK_URL` - Telegram Webhook URL（可选）
+飞书 App ID、App Secret、Verification Token 和会话绑定均在 Web 控制台配置。事件订阅请求地址为 `https://你的域名/feishu/events`。
 
 ### 数据持久化
 

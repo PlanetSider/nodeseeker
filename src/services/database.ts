@@ -90,18 +90,14 @@ export class DatabaseService {
 
   createBaseConfig(config: Omit<BaseConfig, 'id' | 'created_at' | 'updated_at'>): BaseConfig {
     const stmt = this.db.query(`
-      INSERT INTO base_config (username, password, bot_token, chat_id, bound_user_name, bound_user_username, stop_push, only_title, rss_url, rss_interval_seconds, rss_proxy)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO base_config (username, password, stop_push, only_title, rss_url, rss_interval_seconds, rss_proxy)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       RETURNING *
     `);
     
     const result = stmt.get(
       config.username,
       config.password,
-      config.bot_token || null,
-      config.chat_id,
-      config.bound_user_name || null,
-      config.bound_user_username || null,
       config.stop_push,
       config.only_title,
       config.rss_url || 'https://rss.nodeseek.com/',
@@ -127,13 +123,25 @@ export class DatabaseService {
       updates.push('password = ?');
       values.push(config.password);
     }
-    if (config.bot_token !== undefined) {
-      updates.push('bot_token = ?');
-      values.push(config.bot_token);
+    if (config.feishu_app_id !== undefined) {
+      updates.push('feishu_app_id = ?');
+      values.push(config.feishu_app_id);
     }
-    if (config.chat_id !== undefined) {
-      updates.push('chat_id = ?');
-      values.push(config.chat_id);
+    if (config.feishu_app_secret !== undefined) {
+      updates.push('feishu_app_secret = ?');
+      values.push(config.feishu_app_secret);
+    }
+    if (config.feishu_verification_token !== undefined) {
+      updates.push('feishu_verification_token = ?');
+      values.push(config.feishu_verification_token);
+    }
+    if (config.feishu_chat_id !== undefined) {
+      updates.push('feishu_chat_id = ?');
+      values.push(config.feishu_chat_id);
+    }
+    if (config.feishu_user_open_id !== undefined) {
+      updates.push('feishu_user_open_id = ?');
+      values.push(config.feishu_user_open_id);
     }
     if (config.bound_user_name !== undefined) {
       updates.push('bound_user_name = ?');
@@ -163,11 +171,6 @@ export class DatabaseService {
       updates.push('rss_proxy = ?');
       values.push(config.rss_proxy);
     }
-    if (config.telegram_mode !== undefined) {
-      updates.push('telegram_mode = ?');
-      values.push(config.telegram_mode);
-    }
-
     if (updates.length === 0) {
       return this.getBaseConfig();
     }

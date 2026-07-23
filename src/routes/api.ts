@@ -3,84 +3,18 @@ import { z } from 'zod';
 import { DatabaseService } from '../services/database';
 import { AuthService } from '../services/auth';
 import { RSSService } from '../services/rss';
-import { TelegramWebhookService } from '../services/telegram/webhook';
-import { TelegramPushService } from '../services/telegram/push';
+import { FeishuService } from '../services/feishu';
 import { MatcherService } from '../services/matcher';
 import { createValidationMiddleware, createQueryValidationMiddleware, createParamValidationMiddleware } from '../utils/validation';
 import { createSuccessResponse, createErrorResponse } from '../utils/helpers';
 import {
     baseConfigUpdateSchema,
-    botTokenSchema,
     keywordSubSchema,
     keywordSubUpdateSchema,
     paginationSchema,
     idParamSchema
 } from '../utils/validation';
 import type { ContextVariables } from '../types';
-import { getEnvConfig } from '../config/env';
-import { logger } from '../utils/logger';
-
-/**
- * 智能构建 Webhook URL，考虑 CDN 代理情况
- */
-function buildWebhookUrl(c: any): string {
-    const envConfig = getEnvConfig();
-    
-    // 优先使用环境变量配置的 Webhook URL
-    if (envConfig.TELEGRAM_WEBHOOK_URL) {
-        logger.debug('使用环境变量配置的 Webhook URL:', envConfig.TELEGRAM_WEBHOOK_URL);
-        return envConfig.TELEGRAM_WEBHOOK_URL;
-    }
-    
-    // 获取各种可能的协议指示器
-    const proto = c.req.header('x-forwarded-proto') || 
-                  c.req.header('cf-visitor') || 
-                  c.req.header('x-forwarded-ssl');
-    
-    // Cloudflare 特殊处理
-    const cfVisitor = c.req.header('cf-visitor');
-    let isHttps = false;
-    
-    if (cfVisitor) {
-        try {
-            const visitor = JSON.parse(cfVisitor);
-            isHttps = visitor.scheme === 'https';
-        } catch (e) {
-            // 如果解析失败，使用其他方法
-            logger.warn('解析 cf-visitor 头失败:', e);
-        }
-    }
-    
-    // 多种HTTPS检测方式
-    if (!isHttps) {
-        isHttps = proto === 'https' ||
-                  c.req.header('x-forwarded-ssl') === 'on' ||
-                  c.req.header('x-forwarded-port') === '443' ||
-                  c.req.url.startsWith('https://');
-    }
-    
-    // 获取主机名
-    const host = c.req.header('x-forwarded-host') || 
-                 c.req.header('host') || 
-                 new URL(c.req.url).host;
-    
-    // 构建完整URL
-    const protocol = isHttps ? 'https' : 'http';
-    const webhookUrl = `${protocol}://${host}/telegram/webhook`;
-    
-    logger.debug('URL构建详情:', {
-        'cf-visitor': cfVisitor,
-        'x-forwarded-proto': c.req.header('x-forwarded-proto'),
-        'x-forwarded-ssl': c.req.header('x-forwarded-ssl'),
-        'x-forwarded-port': c.req.header('x-forwarded-port'),
-        'x-forwarded-host': c.req.header('x-forwarded-host'),
-        'host': host,
-        'detected-https': isHttps,
-        'final-url': webhookUrl
-    });
-    
-    return webhookUrl;
-}
 
 type Variables = ContextVariables & {
     authService: AuthService;
@@ -180,9 +114,13 @@ apiRoutes.get('/config', async (c) => {
         }
 
         // 不返回密码
-        const { password, ...safeConfig } = config;
+        const { password, feishu_app_secret, feishu_verification_token, ...safeConfig } = config;
 
-        return c.json(createSuccessResponse(safeConfig));
+        return c.json(createSuccessResponse({
+            ...safeConfig,
+            has_feishu_app_secret: !!feishu_app_secret,
+            has_feishu_verification_token: !!feishu_verification_token,
+        }));
     } catch (error) {
         return c.json(createErrorResponse(`获取配置失败: ${error}`), 500);
     }
@@ -201,86 +139,15 @@ apiRoutes.put('/config', createValidationMiddleware(baseConfigUpdateSchema), asy
         }
 
         // 不返回密码
-        const { password, ...safeConfig } = config;
-
-        return c.json(createSuccessResponse(safeConfig, '配置更新成功'));
-    } catch (error) {
-        return c.json(createErrorResponse(`更新配置失败: ${error}`), 500);
-    }
-});
-
-// 设置 Bot Token
-apiRoutes.post('/bot-token', createValidationMiddleware(botTokenSchema), async (c) => {
-    try {
-        const { bot_token, webhook_url } = c.get('validatedData');
-        const dbService = c.get('dbService');
-
-        // 创建 Telegram 服务实例来验证 token
-        const telegramService = new TelegramWebhookService(dbService, bot_token);
-
-        // 验证 Bot Token
-        const botInfo = await telegramService.getBotInfo();
-        if (!botInfo) {
-            return c.json(createErrorResponse('Bot Token 无效或无法连接到 Telegram'), 400);
-        }
-
-        // 设置 Bot 命令菜单
-        await telegramService.setBotCommands();
-
-        // 设置 Webhook
-        let webhookResult = { success: true, error: '', suggestions: [] };
-        let finalWebhookUrl = '';
-        
-        try {
-            if (webhook_url && webhook_url.trim()) {
-                // 使用用户提供的 webhook URL
-                finalWebhookUrl = webhook_url.trim();
-                logger.debug('使用用户提供的 Webhook URL:', finalWebhookUrl);
-            } else {
-                // 智能构建 Webhook URL
-                finalWebhookUrl = buildWebhookUrl(c);
-                logger.debug('自动构建的 Webhook URL:', finalWebhookUrl);
-            }
-            
-            webhookResult = await telegramService.setWebhook(finalWebhookUrl);
-            
-            if (!webhookResult.success) {
-                logger.error('Webhook 设置失败:', webhookResult.error);
-            }
-        } catch (error) {
-            logger.error('Webhook 设置异常:', error);
-            webhookResult = { 
-                success: false, 
-                error: `Webhook 设置异常: ${error}`,
-                suggestions: ['检查网络连接和服务器状态', '尝试稍后重试']
-            };
-        }
-
-        // 更新配置
-        const config = dbService.updateBaseConfig({ bot_token });
-
-        if (!config) {
-            return c.json(createErrorResponse('保存 Bot Token 失败'), 500);
-        }
-
-        // 构建响应消息
-        let message = 'Bot Token 设置成功，命令菜单已更新';
-        if (webhookResult.success) {
-            message += '，Webhook 已设置';
-        } else {
-            message += '，但 Webhook 设置失败';
-        }
+        const { password, feishu_app_secret, feishu_verification_token, ...safeConfig } = config;
 
         return c.json(createSuccessResponse({
-            bot_info: botInfo,
-            webhook_url: finalWebhookUrl || null,
-            webhook_set: webhookResult.success,
-            webhook_error: webhookResult.error,
-            webhook_suggestions: webhookResult.suggestions,
-            message: message
-        }));
+            ...safeConfig,
+            has_feishu_app_secret: !!feishu_app_secret,
+            has_feishu_verification_token: !!feishu_verification_token,
+        }, '配置更新成功'));
     } catch (error) {
-        return c.json(createErrorResponse(`设置 Bot Token 失败: ${error}`), 500);
+        return c.json(createErrorResponse(`更新配置失败: ${error}`), 500);
     }
 });
 
@@ -381,12 +248,12 @@ apiRoutes.post('/posts/:postId/push/:subId',
             const dbService = c.get('dbService');
             const config = dbService.getBaseConfig();
 
-            if (!config?.bot_token) {
-                return c.json(createErrorResponse('未配置 Telegram Bot Token'), 400);
+            if (!config?.feishu_app_id || !config.feishu_app_secret) {
+                return c.json(createErrorResponse('未配置飞书应用'), 400);
             }
 
-            const telegramService = new TelegramPushService(dbService, config.bot_token);
-            const matcherService = new MatcherService(dbService, telegramService);
+            const feishuService = new FeishuService(dbService, config.feishu_app_id, config.feishu_app_secret);
+            const matcherService = new MatcherService(dbService, feishuService);
 
             const result = await matcherService.manualPushPost(postId, subId);
 
@@ -434,12 +301,10 @@ apiRoutes.get('/match-stats', async (c) => {
         const dbService = c.get('dbService');
         const config = dbService.getBaseConfig();
 
-        if (!config?.bot_token) {
-            return c.json(createErrorResponse('未配置 Telegram Bot Token'), 400);
-        }
-
-        const telegramService = new TelegramPushService(dbService, config.bot_token);
-        const matcherService = new MatcherService(dbService, telegramService);
+        const feishuService = config?.feishu_app_id && config.feishu_app_secret
+            ? new FeishuService(dbService, config.feishu_app_id, config.feishu_app_secret)
+            : null;
+        const matcherService = new MatcherService(dbService, feishuService);
 
         const stats = matcherService.getMatchStats();
 
@@ -449,98 +314,70 @@ apiRoutes.get('/match-stats', async (c) => {
     }
 });
 
-// 获取 Telegram Bot 状态
-apiRoutes.get('/telegram/status', async (c) => {
+// 获取飞书应用状态
+apiRoutes.get('/feishu/status', async (c) => {
     try {
         const dbService = c.get('dbService');
         const config = dbService.getBaseConfig();
 
         const statusData = {
-            configured: !!config?.bot_token,
+            configured: !!(config?.feishu_app_id && config.feishu_app_secret && config.feishu_verification_token),
             connected: false,
-            bound: !!config?.chat_id,
-            bot_info: null,
+            bound: !!(config?.feishu_chat_id && config.feishu_user_open_id),
             config: {
-                has_bot_token: !!config?.bot_token,
-                has_chat_id: !!config?.chat_id,
+                has_app_id: !!config?.feishu_app_id,
+                has_app_secret: !!config?.feishu_app_secret,
+                has_verification_token: !!config?.feishu_verification_token,
+                has_chat_id: !!config?.feishu_chat_id,
                 bound_user_name: config?.bound_user_name || null,
-                bound_user_username: config?.bound_user_username || null,
                 stop_push: config?.stop_push === 1,
                 last_check_time: new Date().toISOString()
             }
         };
 
-        if (!config?.bot_token) {
-            return c.json(createSuccessResponse(statusData, 'Bot Token 未配置'));
+        if (!config?.feishu_app_id || !config.feishu_app_secret) {
+            return c.json(createSuccessResponse(statusData, '飞书应用未配置'));
         }
 
-        try {
-            const telegramService = new TelegramWebhookService(dbService, config.bot_token);
-            const botInfo = await telegramService.getBotInfo();
-            
-            if (botInfo) {
-                statusData.connected = true;
-                // 这里需要类型断言，确保类型兼容
-                statusData.bot_info = botInfo as any;
-                return c.json(createSuccessResponse(statusData, 'Bot 状态正常'));
-            } else {
-                return c.json(createSuccessResponse(statusData, 'Bot Token 无效或连接失败'));
-            }
-        } catch (error) {
-            return c.json(createSuccessResponse(statusData, `Bot 连接失败: ${error}`));
-        }
+        const service = new FeishuService(dbService, config.feishu_app_id, config.feishu_app_secret);
+        statusData.connected = await service.testConnection();
+        return c.json(createSuccessResponse(statusData, statusData.connected ? '飞书应用连接正常' : '飞书应用连接失败'));
     } catch (error) {
         return c.json(createErrorResponse(`获取 Bot 状态失败: ${error}`), 500);
     }
 });
 
-// 测试 Telegram 连接
-apiRoutes.post('/telegram/test', async (c) => {
+// 测试飞书连接，可在保存前使用表单中的凭据
+apiRoutes.post('/feishu/test', async (c) => {
     try {
+        const body = await c.req.json().catch(() => ({}));
         const dbService = c.get('dbService');
         const config = dbService.getBaseConfig();
+        const appId = body.app_id || config?.feishu_app_id;
+        const appSecret = body.app_secret || config?.feishu_app_secret;
+        const chatId = body.chat_id || config?.feishu_chat_id;
+        if (!appId || !appSecret) return c.json(createErrorResponse('请填写 App ID 和 App Secret'), 400);
 
-        if (!config?.bot_token) {
-            return c.json(createErrorResponse('Bot Token 未配置'), 400);
-        }
-
-        const telegramService = new TelegramWebhookService(dbService, config.bot_token);
-        
-        // 获取 Bot 信息
-        const botInfo = await telegramService.getBotInfo();
-        if (!botInfo) {
-            return c.json(createErrorResponse('Bot 连接失败，Token 可能无效'), 400);
-        }
-
-        // 如果有绑定的 chat_id，发送测试消息
-        if (config.chat_id) {
-            const testMessage = `🤖 **NodeSeek RSS Bot 测试消息**\n\n⏰ **时间:** ${new Date().toLocaleString('zh-CN')}\n✅ Bot 连接正常`;
-            const sendResult = await telegramService.sendMessage(config.chat_id, testMessage);
-            
-            return c.json(createSuccessResponse({
-                bot_info: botInfo,
-                message_sent: sendResult
-            }, sendResult ? 'Telegram 连接测试成功，消息已发送' : 'Bot 连接正常，但消息发送失败'));
-        } else {
-            return c.json(createSuccessResponse({
-                bot_info: botInfo,
-                message_sent: false
-            }, 'Bot 连接正常，但未绑定用户'));
-        }
+        const service = new FeishuService(dbService, appId, appSecret);
+        if (!await service.testConnection()) return c.json(createErrorResponse('飞书应用凭据无效'), 400);
+        const messageSent = chatId ? await service.sendMessage(chatId, 'NodeSeeker 飞书推送测试成功') : false;
+        return c.json(createSuccessResponse({ connected: true, message_sent: messageSent },
+            chatId ? (messageSent ? '连接成功，测试消息已发送' : '连接成功，但测试消息发送失败') : '连接成功，尚未绑定会话'));
     } catch (error) {
         return c.json(createErrorResponse(`测试连接失败: ${error}`), 500);
     }
 });
 
 // 解除用户绑定
-apiRoutes.post('/telegram/unbind', async (c) => {
+apiRoutes.post('/feishu/unbind', async (c) => {
     try {
         const dbService = c.get('dbService');
         
         const config = dbService.updateBaseConfig({
-            chat_id: '',
-            bound_user_name: undefined,
-            bound_user_username: undefined
+            feishu_chat_id: '',
+            feishu_user_open_id: '',
+            bound_user_name: '',
+            bound_user_username: ''
         });
 
         if (!config) {
@@ -554,7 +391,7 @@ apiRoutes.post('/telegram/unbind', async (c) => {
 });
 
 // 发送测试消息
-apiRoutes.post('/telegram/send-test', createValidationMiddleware(z.object({
+apiRoutes.post('/feishu/send-test', createValidationMiddleware(z.object({
     message: z.string().optional()
 })), async (c) => {
     try {
@@ -562,18 +399,17 @@ apiRoutes.post('/telegram/send-test', createValidationMiddleware(z.object({
         const dbService = c.get('dbService');
         const config = dbService.getBaseConfig();
 
-        if (!config?.bot_token) {
-            return c.json(createErrorResponse('Bot Token 未配置'), 400);
+        if (!config?.feishu_app_id || !config.feishu_app_secret) {
+            return c.json(createErrorResponse('飞书应用未配置'), 400);
         }
 
-        if (!config.chat_id) {
+        if (!config.feishu_chat_id) {
             return c.json(createErrorResponse('用户未绑定'), 400);
         }
 
-        const telegramService = new TelegramPushService(dbService, config.bot_token);
-        
-        const testMessage = message || `🧪 **测试消息**\n\n⏰ **时间:** ${new Date().toLocaleString('zh-CN')}`;
-        const result = await telegramService.sendMessage(config.chat_id, testMessage);
+        const service = new FeishuService(dbService, config.feishu_app_id, config.feishu_app_secret);
+        const testMessage = message || `NodeSeeker 测试消息\n时间：${new Date().toLocaleString('zh-CN')}`;
+        const result = await service.sendMessage(config.feishu_chat_id, testMessage);
 
         if (result) {
             return c.json(createSuccessResponse(null, '测试消息发送成功'));

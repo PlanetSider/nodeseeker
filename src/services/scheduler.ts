@@ -1,6 +1,6 @@
 import { DatabaseService } from './database';
 import { RSSService } from './rss';
-import { TelegramPushService } from './telegram/push';
+import { FeishuService } from './feishu';
 import { MatcherService } from './matcher';
 import { getEnvConfig } from '../config/env';
 import { logger } from '../utils/logger';
@@ -94,15 +94,15 @@ export class SchedulerService {
             // 2. 匹配和推送
             const unpushedCount = this.dbService.getPostsCountByStatus(0);
             if (unpushedCount > 0) {
-                let telegramService: TelegramPushService | null = null;
-                if (config.bot_token) {
+                let feishuService: FeishuService | null = null;
+                if (config.feishu_app_id && config.feishu_app_secret) {
                     try {
-                        telegramService = new TelegramPushService(this.dbService, config.bot_token);
+                        feishuService = new FeishuService(this.dbService, config.feishu_app_id, config.feishu_app_secret);
                     } catch (e) {
-                        logger.warn('Telegram 服务初始化失败，仅执行匹配');
+                        logger.warn('飞书服务初始化失败，仅执行匹配');
                     }
                 }
-                const matcherService = new MatcherService(this.dbService, telegramService);
+                const matcherService = new MatcherService(this.dbService, feishuService);
 
                 const pushResult = await matcherService.processUnpushedPosts();
                 logger.task.info(`匹配: ${pushResult.pushed} | 未匹配: ${pushResult.skipped} | 失败: ${pushResult.failed}`);

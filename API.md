@@ -83,8 +83,10 @@ Authorization: Bearer <token>
   "data": {
     "id": 1,
     "username": "admin",
-    "bot_token": "123456:ABC-DEF...",
-    "chat_id": "123456789",
+    "feishu_app_id": "cli_xxxxxxxxxxxxx",
+    "feishu_chat_id": "oc_xxxxxxxxxxxxx",
+    "has_feishu_app_secret": true,
+    "has_feishu_verification_token": true,
     "bound_user_name": "John Doe",
     "bound_user_username": "johndoe",
     "stop_push": 0,
@@ -105,7 +107,10 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "chat_id": "987654321",
+  "feishu_app_id": "cli_xxxxxxxxxxxxx",
+  "feishu_app_secret": "your-app-secret",
+  "feishu_verification_token": "your-verification-token",
+  "feishu_chat_id": "oc_xxxxxxxxxxxxx",
   "stop_push": 0,
   "only_title": 1,
   "rss_url": "https://rss.nodeseek.com/",
@@ -114,14 +119,16 @@ Content-Type: application/json
 }
 ```
 
-### 设置 Telegram Bot Token
+### 测试飞书连接
 ```http
-POST /api/bot-token
+POST /api/feishu/test
 Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "bot_token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+  "app_id": "cli_xxxxxxxxxxxxx",
+  "app_secret": "your-app-secret",
+  "chat_id": "oc_xxxxxxxxxxxxx"
 }
 ```
 
@@ -406,57 +413,38 @@ POST /api/scheduler/rss/run
 Authorization: Bearer <token>
 ```
 
-## Telegram 集成
+## 飞书集成
 
-### Webhook 处理
+### 事件订阅回调
 ```http
-POST /telegram/webhook
+POST /feishu/events
 Content-Type: application/json
 
 {
-  "update_id": 123456,
-  "message": {
-    "message_id": 1,
-    "from": {
-      "id": 123456789,
-      "first_name": "John",
-      "username": "johndoe"
-    },
-    "chat": {
-      "id": 123456789,
-      "type": "private"
-    },
-    "date": 1640995200,
-    "text": "/start"
-  }
+  "challenge": "challenge-value",
+  "token": "verification-token",
+  "type": "url_verification"
 }
 ```
 
-### 设置 Webhook
+飞书开放平台会完成 URL 校验并向该端点发送 `im.message.receive_v1` 事件。此接口无需登录，但会校验 Verification Token。
+
+### 获取应用状态
 ```http
-POST /telegram/set-webhook
+GET /api/feishu/status
+Authorization: Bearer <token>
+```
+
+### 测试应用和消息发送
+```http
+POST /api/feishu/test
 Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "webhookUrl": "https://your-domain.com/telegram/webhook"
-}
-```
-
-### 获取 Bot 信息
-```http
-GET /telegram/bot-info
-Authorization: Bearer <token>
-```
-
-### 发送测试消息
-```http
-POST /telegram/test-message
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "message": "这是一条测试消息"
+  "app_id": "cli_xxxxxxxxxxxxx",
+  "app_secret": "your-app-secret",
+  "chat_id": "oc_xxxxxxxxxxxxx"
 }
 ```
 
@@ -500,8 +488,11 @@ interface BaseConfig {
   id?: number;
   username: string;
   password: string;
-  bot_token?: string;
-  chat_id: string;
+  feishu_app_id?: string;
+  feishu_app_secret?: string;
+  feishu_verification_token?: string;
+  feishu_chat_id?: string;
+  feishu_user_open_id?: string;
   bound_user_name?: string;
   bound_user_username?: string;
   stop_push: number;

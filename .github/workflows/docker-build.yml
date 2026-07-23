@@ -1,241 +1,67 @@
-name: Docker Build and Push
+name: Build and publish image
 
 on:
   push:
-    branches:
-      - main
-      - develop
-    tags:
-      - 'v*'
+    branches: [main]
+    tags: ['v*']
   pull_request:
-    branches:
-      - main
-
+    branches: [main]
+  workflow_dispatch:
 
 env:
-  GHCR_REGISTRY: ghcr.io
-  DOCKERHUB_REGISTRY: docker.io
-  GHCR_IMAGE_NAME: ljnchn/nodeseeker-docker
-  DOCKERHUB_IMAGE_NAME: ersichub/nodeseeker
+  REGISTRY: ghcr.io
+  IMAGE_NAME: planetsider/nodeseeker
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Run linter
-        run: |
-          if [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ]; then
-            npm install -g eslint
-            eslint . || true
-          else
-            echo "No lint configuration found, skipping lint"
-          fi
-
   test:
-    name: Test & Build (Bun)
     runs-on: ubuntu-latest
-    needs: lint
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
-      - name: Cache Bun dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
-
-      - name: Run tests
-        run: |
-          if [ -d "test" ] || find src -name "*.test.ts" -o -name "*.spec.ts" | grep -q .; then
-            echo "Running tests..."
-            bun test
-          else
-            echo "No test files found, skipping tests"
-          fi
-
-      - name: Build application
+      - name: Test
+        run: bun test
+      - name: Build
         run: bun run build
 
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-output
-          path: |
-            dist
-            build
-            .next
-            out
-            public
-          if-no-files-found: warn
-
-  docker:
-    name: Build and Push Docker Images
-    runs-on: ubuntu-latest
+  image:
     needs: test
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: build-output
-          path: ./build-output
-
-      - name: Expose build output into expected paths (if present)
-        run: |
-          # Copy common build dirs into repository root so Dockerfile can COPY them reliably.
-          if [ -d "./build-output/dist" ]; then
-            rm -rf ./dist || true
-            cp -r ./build-output/dist ./dist
-          fi
-          if [ -d "./build-output/build" ]; then
-            rm -rf ./build || true
-            cp -r ./build-output/build ./build
-          fi
-          if [ -d "./build-output/.next" ]; then
-            rm -rf ./.next || true
-            cp -r ./build-output/.next ./.next
-          fi
-          if [ -d "./build-output/out" ]; then
-            rm -rf ./out || true
-            cp -r ./build-output/out ./out
-          fi
-          if [ -d "./build-output/public" ]; then
-            rm -rf ./public || true
-            cp -r ./build-output/public ./public
-          fi
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.GHCR_REGISTRY }}
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Log in to Docker Hub (only for main & tags)
-        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.DOCKERHUB_REGISTRY }}
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Extract metadata for GHCR
-        id: meta-ghcr
+      - name: Generate image metadata
+        id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
-            type=match,pattern=v(.*),group=1
-            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/develop' }}
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-
-      - name: Extract metadata for Docker Hub
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-        id: meta-dockerhub
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.DOCKERHUB_IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=match,pattern=v(.*),group=1
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-
-      - name: Build and push to GHCR
-        id: build-ghcr
-        uses: docker/build-push-action@v5
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+      - name: Build and publish
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta-ghcr.outputs.tags }}
-          labels: ${{ steps.meta-ghcr.outputs.labels }}
-          cache-from: type=gha,ref=${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}:cache
-          cache-to: type=gha,ref=${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}:cache,mode=max
-
-      - name: Build and push to Docker Hub
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-        id: build-dockerhub
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta-dockerhub.outputs.tags }}
-          labels: ${{ steps.meta-dockerhub.outputs.labels }}
-
-
-  release:
-    name: Create Release & Attach Docker Info
-    runs-on: ubuntu-latest
-    needs: docker
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write
-      packages: write
-      pull-requests: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create GitHub Release (generate changelog via release-please)
-        uses: googleapis/release-please-action@v4
-        with:
-          release-type: node
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compose release notes with Docker image info
-        run: |
-          TAG=${GITHUB_REF#refs/tags/}
-          echo "### Docker Images" > release_notes.md
-          echo "- GHCR: ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}:${TAG}" >> release_notes.md
-          echo "- Docker Hub: ${{ env.DOCKERHUB_IMAGE_NAME }}:${TAG}" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "**Digests:**" >> release_notes.md
-          echo "- GHCR: ${{ steps.build-ghcr.outputs.digest }}" >> release_notes.md
-          if [ -n "${{ steps.build-dockerhub.outputs.digest }}" ]; then
-            echo "- Docker Hub: ${{ steps.build-dockerhub.outputs.digest }}" >> release_notes.md
-          fi
-
-      - name: Update / Create Release with notes
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          body_path: release_notes.md
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

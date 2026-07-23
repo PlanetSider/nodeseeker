@@ -28,7 +28,7 @@ async function testDatabase() {
     console.log(`   配置存在: ${config !== null}`);
     if (config) {
       console.log(`   用户名: ${config.username}`);
-      console.log(`   Chat ID: ${config.chat_id}`);
+      console.log(`   飞书 Chat ID: ${config.feishu_chat_id}`);
     }
     
     // 测试4: 获取关键词订阅
