@@ -257,11 +257,10 @@ export class RSSService {
     // 清洗标题
     const title = item.title.trim().replace(/\s+/g, " ");
 
-    // 清洗内容摘要
-    let memo = item.contentSnippet || item.content || "";
+    // 清洗完整正文，优先使用 RSS content，避免 AI 翻译和飞书推送只拿到摘要。
+    let memo = item.content || item.contentSnippet || "";
     memo = memo.replace(/<[^>]*>/g, ""); // 移除 HTML 标签
     memo = memo.trim().replace(/\s+/g, " ");
-    memo = memo.substring(0, 500); // 限制长度
 
     // 清洗分类
     const category = item.category ? item.category.trim() : "";

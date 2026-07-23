@@ -703,9 +703,10 @@ apiRoutes.post('/ai-translation/test', createValidationMiddleware(aiTranslationS
 
         const feishuService = new FeishuService(dbService, baseConfig.feishu_app_id, baseConfig.feishu_app_secret);
         const link = sampledPost.link || `https://www.nodeseek.com/post-${sampledPost.post_id}-1`;
-        const sent = await feishuService.sendMessage(
+        const sourceName = sampledPost.rss_source_id ? dbService.getRSSSourceById(sampledPost.rss_source_id)?.name : undefined;
+        const sent = await feishuService.sendLongMessage(
             baseConfig.feishu_chat_id,
-            `AI 翻译测试成功\n\n${translated.title}\n\n${translated.content}\n${link}`,
+            `AI 翻译测试成功${sourceName ? `\n📡 ${sourceName}` : ''}\n\n${translated.title}\n\n${translated.content}\n${link}`,
         );
         if (!sent) return c.json(createErrorResponse('AI 翻译成功，但飞书测试消息发送失败'), 400);
 

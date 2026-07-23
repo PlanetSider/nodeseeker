@@ -43,6 +43,8 @@ function createDatabaseMock() {
         getAllKeywordSubs: mock(() => subscriptions),
         getAllRSSSources: mock((includeDisabled = false) => sources.filter((source) => includeDisabled || source.enabled === 1)),
         getRSSSourceById: mock((id: number) => sources.find((source) => source.id === id) || null),
+        getAITranslationConfig: mock(() => ({ api_url: '', model: '', prompt: '', rss_source_ids: [] })),
+        updatePostPushStatus: mock(() => {}),
         getRecentPosts: mock(() => []),
         createKeywordSub: mock((sub: Record<string, unknown>) => {
             const created = { id: nextSubscriptionId++, ...sub };
@@ -107,6 +109,45 @@ describe('FeishuService', () => {
         expect(database.updateBaseConfig).toHaveBeenCalledTimes(1);
     });
 
+    it('splits long Feishu text messages without dropping content', async () => {
+        const database = createDatabaseMock();
+        const requests = mockFeishuFetch();
+        const service = new FeishuService(database as any, 'app-id', 'app-secret');
+        const longText = '完整翻译正文'.repeat(900);
+
+        const sent = await service.sendLongMessage('oc_chat', longText);
+
+        expect(sent).toBe(true);
+        const messageTexts = requests
+            .filter((request) => request.url.includes('/im/v1/messages'))
+            .map((request) => JSON.parse(request.body.content).text as string);
+        expect(messageTexts.length).toBeGreaterThan(1);
+        expect(messageTexts.map((text) => text.replace(/^\(\d+\/\d+\)\n/, '')).join('')).toBe(longText);
+    });
+
+    it('shows the actual RSS source when pushing translated posts', async () => {
+        const database = createDatabaseMock();
+        database.config.feishu_chat_id = 'oc_chat';
+        database.config.feishu_user_open_id = 'ou_user';
+        const requests = mockFeishuFetch();
+        const service = new FeishuService(database as any, 'app-id', 'app-secret');
+
+        const sent = await service.pushPost({
+            post_id: 123,
+            title: 'Example title',
+            memo: 'Body',
+            category: 'tech',
+            creator: 'tester',
+            push_status: 0,
+            rss_source_id: 2,
+            pub_date: new Date().toISOString(),
+        }, { id: 1, keyword1: 'Example', rss_source_name: 'NodeSeek' });
+
+        expect(sent).toBe(true);
+        const messageRequest = requests.find((request) => request.url.includes('/im/v1/messages'));
+        expect(JSON.parse(messageRequest!.body.content).text).toContain('📡 Custom');
+    });
+
     it('sends an RSS source card for /add and applies strict keywords on click', async () => {
         const database = createDatabaseMock();
         const requests = mockFeishuFetch();
@@ -127,7 +168,8 @@ describe('FeishuService', () => {
         expect(cardRequest!.body.msg_type).toBe('interactive');
         const card = JSON.parse(cardRequest!.body.content);
         expect(card.header.title.content).toBe('选择 RSS 来源');
-        expect(card.elements.filter((element: any) => element.tag === 'action')).toHaveLength(2);
+        expect(card.elements.filter((element: any) => element.tag === 'action')).toHaveLength(3);
+        expect(card.elements.find((element: any) => element.tag === 'action').actions[0].text.content).toBe('全部来源');
 
         const result = await service.handleCardAction({
             operator: { open_id: 'ou_user' },
@@ -150,6 +192,32 @@ describe('FeishuService', () => {
             rss_source_ids: [2],
         }));
         expect(result?.toast).toEqual(expect.objectContaining({ type: 'success' }));
+    });
+
+    it('applies /add keywords to all RSS sources from the card', async () => {
+        const database = createDatabaseMock();
+        database.config.feishu_user_open_id = 'ou_user';
+        const service = new FeishuService(database as any, 'app-id', 'app-secret');
+
+        const result = await service.handleCardAction({
+            operator: { open_id: 'ou_user' },
+            action: { value: {
+                action: 'rss_subscription_toggle',
+                mode: 'add_all',
+                keywords: ['vps'],
+                strict: [1],
+            } },
+        });
+
+        expect(database.createKeywordSub).toHaveBeenCalledWith(expect.objectContaining({
+            keyword1: 'vps',
+            keyword1_strict: 1,
+            rss_source_ids: [],
+        }));
+        expect(result?.toast).toEqual({ type: 'success', content: '已应用于全部来源' });
+        const card = result?.card as any;
+        expect(card.elements.find((element: any) => element.tag === 'action').actions[0].text.content)
+            .toBe('已应用 · 全部来源');
     });
 
     it('can apply one keyword to multiple RSS sources from the card', async () => {

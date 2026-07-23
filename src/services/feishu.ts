@@ -27,7 +27,7 @@ export interface FeishuMessageEvent {
 
 interface FeishuCardActionValue {
     action?: string;
-    mode?: 'add' | 'delete';
+    mode?: 'add' | 'add_all' | 'delete';
     source_id?: number;
     keywords?: string[];
     strict?: number[];
@@ -52,6 +52,7 @@ type CommandReply = string | { card: FeishuCard };
 
 const API_BASE = 'https://open.feishu.cn/open-apis';
 const processedEvents = new Map<string, number>();
+const FEISHU_TEXT_CHUNK_SIZE = 3500;
 
 export class FeishuService {
     private accessToken?: string;
@@ -119,6 +120,15 @@ export class FeishuService {
         }
     }
 
+    async sendLongMessage(receiveId: string, text: string, receiveIdType = 'chat_id'): Promise<boolean> {
+        const chunks = this.splitMessage(text);
+        for (const chunk of chunks) {
+            const sent = await this.sendMessage(receiveId, chunk, receiveIdType);
+            if (!sent) return false;
+        }
+        return true;
+    }
+
     async sendCard(receiveId: string, card: FeishuCard, receiveIdType = 'chat_id'): Promise<boolean> {
         try {
             const token = await this.getAccessToken();
@@ -152,11 +162,14 @@ export class FeishuService {
         const keywords = [matchedSub?.keyword1, matchedSub?.keyword2, matchedSub?.keyword3]
             .filter((keyword) => keyword?.trim())
             .join(' + ');
+        const sourceName = post.rss_source_id
+            ? this.dbService.getRSSSourceById(post.rss_source_id)?.name
+            : undefined;
         const details = [
             keywords && `🎯 ${keywords}`,
             matchedSub?.creator && `👤 ${matchedSub.creator}`,
             matchedSub?.category && `🗂️ ${this.getCategoryName(matchedSub.category)}`,
-            (matchedSub?.rss_source_name || post.rss_source_name) && `📡 ${matchedSub?.rss_source_name || post.rss_source_name}`,
+            (sourceName || post.rss_source_name || matchedSub?.rss_source_name) && `📡 ${sourceName || post.rss_source_name || matchedSub?.rss_source_name}`,
         ].filter(Boolean).join('  ');
         const translated = await new AITranslationService(this.dbService).translatePost(post);
         const postContent = translated
@@ -164,12 +177,29 @@ export class FeishuService {
             : post.title;
         const link = post.link || `https://www.nodeseek.com/post-${post.post_id}-1`;
         const text = `${details}\n\n${postContent}\n${link}`;
-        const success = await this.sendMessage(config.feishu_chat_id, text);
+        const success = await this.sendLongMessage(config.feishu_chat_id, text);
 
         if (success) {
             this.dbService.updatePostPushStatus(post.post_id, 3, matchedSub?.id, new Date().toISOString(), post.rss_source_id);
         }
         return success;
+    }
+
+    private splitMessage(text: string): string[] {
+        if (text.length <= FEISHU_TEXT_CHUNK_SIZE) return [text];
+        const chunks: string[] = [];
+        let remaining = text;
+        while (remaining.length > FEISHU_TEXT_CHUNK_SIZE) {
+            let splitAt = remaining.lastIndexOf('\n\n', FEISHU_TEXT_CHUNK_SIZE);
+            if (splitAt < FEISHU_TEXT_CHUNK_SIZE * 0.5) {
+                splitAt = remaining.lastIndexOf('\n', FEISHU_TEXT_CHUNK_SIZE);
+            }
+            if (splitAt < FEISHU_TEXT_CHUNK_SIZE * 0.5) splitAt = FEISHU_TEXT_CHUNK_SIZE;
+            chunks.push(remaining.slice(0, splitAt).trimEnd());
+            remaining = remaining.slice(splitAt).trimStart();
+        }
+        if (remaining) chunks.push(remaining);
+        return chunks.map((chunk, index) => chunks.length > 1 ? `(${index + 1}/${chunks.length})\n${chunk}` : chunk);
     }
 
     async handleMessageEvent(payload: FeishuMessageEvent, eventId?: string): Promise<void> {
@@ -210,13 +240,19 @@ export class FeishuService {
             return { toast: { type: 'error', content: '您没有权限修改订阅' } };
         }
 
-        const sourceId = Number(value.source_id);
-        const source = this.dbService.getRSSSourceById(sourceId);
-        if (!source) return { toast: { type: 'error', content: 'RSS 来源不存在' } };
-
-        if (value.mode === 'add') {
+        if (value.mode === 'add' || value.mode === 'add_all') {
             const keywords = (value.keywords || []).filter(Boolean).slice(0, 3);
             if (keywords.length === 0) return { toast: { type: 'error', content: '关键词不能为空' } };
+            if (value.mode === 'add_all') {
+                this.addAllSourceSubscription(keywords, value.strict || []);
+                return {
+                    toast: { type: 'success', content: '已应用于全部来源' },
+                    card: this.buildAddSourceCard(keywords, value.strict || []),
+                };
+            }
+            const sourceId = Number(value.source_id);
+            const source = this.dbService.getRSSSourceById(sourceId);
+            if (!source) return { toast: { type: 'error', content: 'RSS 来源不存在' } };
             this.addSourceSubscription(keywords, value.strict || [], sourceId);
             return {
                 toast: { type: 'success', content: `已应用于 ${source.name}` },
@@ -225,6 +261,9 @@ export class FeishuService {
         }
 
         if (value.mode === 'delete' && value.keyword) {
+            const sourceId = Number(value.source_id);
+            const source = this.dbService.getRSSSourceById(sourceId);
+            if (!source) return { toast: { type: 'error', content: 'RSS 来源不存在' } };
             this.removeKeywordFromSource(value.keyword, sourceId);
             return {
                 toast: { type: 'success', content: `已取消 ${source.name} 的监控` },
@@ -379,6 +418,25 @@ export class FeishuService {
         });
     }
 
+    private addAllSourceSubscription(keywords: string[], strict: number[]): void {
+        const exists = this.dbService.getAllKeywordSubs().some((sub) =>
+            this.getSubscriptionSourceIds(sub).length === 0
+            && [sub.keyword1, sub.keyword2, sub.keyword3].every((keyword, index) => (keyword || '') === (keywords[index] || ''))
+            && [sub.keyword1_strict, sub.keyword2_strict, sub.keyword3_strict].every((value, index) => (value || 0) === (strict[index] || 0))
+        );
+        if (exists) return;
+
+        this.dbService.createKeywordSub({
+            keyword1: keywords[0],
+            keyword2: keywords[1],
+            keyword3: keywords[2],
+            keyword1_strict: strict[0] || 0,
+            keyword2_strict: strict[1] || 0,
+            keyword3_strict: strict[2] || 0,
+            rss_source_ids: [],
+        });
+    }
+
     private getSubscriptionSourceIds(sub: KeywordSub): number[] {
         return sub.rss_source_ids?.length ? sub.rss_source_ids : (sub.rss_source_id ? [sub.rss_source_id] : []);
     }
@@ -474,11 +532,12 @@ export class FeishuService {
                 .every((keyword, index) => (keyword || '') === (keywords[index] || ''))
                 && [sub.keyword1_strict, sub.keyword2_strict, sub.keyword3_strict]
                     .every((value, index) => (value || 0) === (strict[index] || 0)));
-        const selected = matchingSubscriptions.some((sub) => this.getSubscriptionSourceIds(sub).length === 0)
+        const allSelected = matchingSubscriptions.some((sub) => this.getSubscriptionSourceIds(sub).length === 0);
+        const selected = allSelected
             ? new Set(sources.map((source) => source.id!))
             : new Set(matchingSubscriptions.flatMap((sub) => this.getSubscriptionSourceIds(sub)));
         const description = keywords.map((keyword, index) => `${keyword}${strict[index] ? ' [严格]' : ''}`).join(' + ');
-        return this.buildSourceCard('选择 RSS 来源', `关键词：**${description}**\n\n点击一个或多个来源应用监控。`, sources, (source) => ({
+        return this.buildSourceCard('选择 RSS 来源', `关键词：**${description}**\n\n点击“全部来源”或一个/多个来源应用监控。`, sources, (source) => ({
             text: selected.has(source.id!) ? `已应用 · ${source.name}` : source.name,
             type: selected.has(source.id!) ? 'primary' : 'default',
             value: {
@@ -488,7 +547,16 @@ export class FeishuService {
                 keywords,
                 strict,
             },
-        }));
+        }), {
+            text: allSelected ? '已应用 · 全部来源' : '全部来源',
+            type: allSelected ? 'primary' : 'default',
+            value: {
+                action: 'rss_subscription_toggle',
+                mode: 'add_all',
+                keywords,
+                strict,
+            },
+        });
     }
 
     private buildDeleteSourceCard(keyword: string): FeishuCard {
@@ -514,12 +582,23 @@ export class FeishuService {
         content: string,
         sources: RSSSource[],
         createButton: (source: RSSSource) => { text: string; type: string; value: Record<string, unknown> },
+        firstButton?: { text: string; type: string; value: Record<string, unknown> },
     ): FeishuCard {
+        const firstAction = firstButton ? [{
+            tag: 'action',
+            actions: [{
+                tag: 'button',
+                text: { tag: 'plain_text', content: firstButton.text },
+                type: firstButton.type,
+                value: firstButton.value,
+            }],
+        }] : [];
         return {
             config: { wide_screen_mode: true, update_multi: true },
             header: { title: { tag: 'plain_text', content: title }, template: 'blue' },
             elements: [
                 { tag: 'markdown', content },
+                ...firstAction,
                 ...sources.map((source) => {
                     const button = createButton(source);
                     return {

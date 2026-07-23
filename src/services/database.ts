@@ -1,6 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import { existsSync, statSync } from 'fs';
-import { createDatabaseConnection, getDatabaseConfig } from '../config/database';
+import { createDatabaseConnection } from '../config/database';
 import type { BaseConfig, Post, KeywordSub, CleanupResult, RSSSource, AITranslationConfig } from '../types';
 import { logger } from '../utils/logger';
 
@@ -930,12 +929,9 @@ export class DatabaseService {
   }
 
   getDatabaseSizeMb(): number {
-    const dbPath = getDatabaseConfig().path;
-    const paths = [dbPath, `${dbPath}-wal`, `${dbPath}-shm`];
-    const totalBytes = paths.reduce((total, filePath) => {
-      if (!existsSync(filePath)) return total;
-      return total + statSync(filePath).size;
-    }, 0);
+    const pageCount = (this.db.query('PRAGMA page_count').get() as { page_count?: number })?.page_count || 0;
+    const pageSize = (this.db.query('PRAGMA page_size').get() as { page_size?: number })?.page_size || 0;
+    const totalBytes = pageCount * pageSize;
 
     return Math.round((totalBytes / 1024 / 1024) * 100) / 100;
   }

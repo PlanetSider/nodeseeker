@@ -52,3 +52,19 @@ describe('RSSService post id extraction', () => {
         expect(service.extractPostId(item)).toBeGreaterThan(0);
     });
 });
+
+describe('RSSService content parsing', () => {
+    it('preserves full RSS content for AI translation and Feishu push', () => {
+        const service = createRSSService();
+        const fullContent = `<p>${'完整正文'.repeat(300)}</p>`;
+
+        const parsed = service.parseRSSItem({
+            ...baseItem,
+            contentSnippet: '短摘要',
+            content: fullContent,
+        }, 1);
+
+        expect(parsed?.memo).toContain('完整正文'.repeat(300));
+        expect(parsed?.memo).not.toBe('短摘要');
+    });
+});
