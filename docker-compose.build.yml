@@ -1,0 +1,6 @@
+services:
+  nodeseeker:
+    image: nodeseeker:local
+    build:
+      context: .
+      dockerfile: Dockerfile

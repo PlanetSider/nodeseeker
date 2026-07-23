@@ -1,28 +1,22 @@
-version: '3.8'
-
 services:
   nodeseeker:
-    build: .
-    container_name: nodeseeker-app
+    image: ${NODESEEKER_IMAGE:-ghcr.io/planetsider/nodeseeker:latest}
+    container_name: nodeseeker
     restart: unless-stopped
     ports:
-      - "3010:3010"
+      - "${PORT:-3010}:3010"
     environment:
-      - NODE_ENV=production
-      - PORT=3010
-      - HOST=0.0.0.0
-      - DATABASE_PATH=/usr/src/app/data/nodeseeker.db
-      - RSS_URL=${RSS_URL:-https://rss.nodeseek.com/}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3010}
+      NODE_ENV: production
+      PORT: 3010
+      HOST: 0.0.0.0
+      DATABASE_PATH: /usr/src/app/data/nodeseeker.db
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3010}
+      RSS_TIMEOUT: ${RSS_TIMEOUT:-10000}
+      RSS_CHECK_ENABLED: ${RSS_CHECK_ENABLED:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
-      # 持久化数据库文件
       - nodeseeker_data:/usr/src/app/data
-      # 日志目录
       - nodeseeker_logs:/usr/src/app/logs
-      # 环境变量文件（可选）
-      # - ./.env:/usr/src/app/.env:ro
-    networks:
-      - nodeseeker_network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3010/health"]
       interval: 30s
@@ -30,17 +24,13 @@ services:
       retries: 3
       start_period: 40s
     logging:
-      driver: "json-file"
+      driver: json-file
       options:
-        max-size: "10m"
+        max-size: 10m
         max-file: "3"
 
 volumes:
   nodeseeker_data:
-    driver: local
+    name: nodeseeker_data
   nodeseeker_logs:
-    driver: local
-
-networks:
-  nodeseeker_network:
-    driver: bridge
+    name: nodeseeker_logs

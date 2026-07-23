@@ -1,194 +1,159 @@
-# NodeSeeker Docker 部署指南
+# Docker 部署说明
 
-本指南将帮助你使用 Docker 部署 NodeSeeker 应用。
+项目提供两种 Compose 使用方式：
 
-## 文件说明
+- `docker-compose.yml`：直接运行 GHCR 中已发布的镜像，适合服务器部署。
+- `docker-compose.build.yml`：叠加到默认配置，从当前源码构建镜像。
 
-- `Dockerfile` - Docker 镜像构建文件
-- `docker-compose.yml` - 开发环境 Docker Compose 配置
-- `docker-compose.prod.yml` - 生产环境 Docker Compose 配置
-- `.dockerignore` - Docker 构建忽略文件
-- `deploy.sh` - 部署脚本（Linux/macOS）
-
-## 快速开始
-
-### 开发环境
-
-1. 确保已安装 Docker 和 Docker Compose
-2. 克隆项目到本地
-3. 运行以下命令：
+## 镜像部署
 
 ```bash
-# 构建并启动服务
-docker-compose up --build -d
+git clone https://github.com/PlanetSider/nodeseeker.git
+cd nodeseeker
+cp .env.example .env
 
-# 查看服务状态
-docker-compose ps
-
-# 查看日志
-docker-compose logs -f nodeseeker
+docker compose pull
+docker compose up -d
 ```
 
-应用将在 http://localhost:3010 启动。
+默认镜像为 `ghcr.io/planetsider/nodeseeker:latest`。固定版本可修改 `.env`：
 
-### 生产环境
+```dotenv
+NODESEEKER_IMAGE=ghcr.io/planetsider/nodeseeker:v1.0
+```
 
-1. 部署应用：
+更新服务：
 
 ```bash
-# 使用生产配置启动
-docker-compose -f docker-compose.prod.yml pull
-docker-compose -f docker-compose.prod.yml up -d
-
-# 查看服务状态
-docker-compose -f docker-compose.prod.yml ps
+docker compose pull
+docker compose up -d
 ```
 
-## 使用部署脚本（Linux/macOS）
-
-部署脚本提供了便捷的部署和管理功能：
+## 源码构建
 
 ```bash
-# 给脚本执行权限
-chmod +x deploy.sh
-
-# 部署开发环境
-./deploy.sh deploy dev
-
-# 部署生产环境
-./deploy.sh deploy prod
-
-# 查看日志
-./deploy.sh logs prod
-
-# 停止服务
-./deploy.sh stop prod
-
-# 重启服务
-./deploy.sh restart prod
-
-# 清理未使用的资源
-./deploy.sh clean
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.build.yml \
+  up -d --build
 ```
 
-## Windows 部署
-
-在 Windows 上，你可以直接使用 Docker Compose 命令：
-
-```powershell
-# 开发环境
-docker-compose up --build -d
-
-# 生产环境
-docker-compose -f docker-compose.prod.yml up --build -d
-
-# 查看日志
-docker-compose logs -f
-
-# 停止服务
-docker-compose down
-```
-
-## 配置说明
-
-### 飞书配置
-
-飞书 App ID、App Secret、Verification Token 和会话绑定均在 Web 控制台配置。事件订阅请求地址为 `https://你的域名/feishu/events`。
-
-### 数据持久化
-
-- 开发环境：数据存储在 Docker 卷中
-- 生产环境：数据存储在 `/opt/nodeseeker/data` 目录
-
-
-## 监控和日志
-
-### 查看日志
+检查合并后的 Compose 配置：
 
 ```bash
-# 查看应用日志
-docker-compose logs -f nodeseeker
-
-# 查看 Nginx 日志
-docker-compose logs -f nginx
-
-# 查看所有服务日志
-docker-compose logs -f
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.build.yml \
+  config
 ```
 
-### 健康检查
-
-应用包含健康检查端点 `/health`，Docker 会自动监控服务状态。
-
-### 自动更新（生产环境）
-
-生产配置包含 Watchtower 服务，可以自动更新容器镜像。
-
-## 故障排除
-
-### 常见问题
-
-1. **端口冲突**
-   ```bash
-   # 检查端口占用
-   netstat -tulpn | grep :3010
-   # 或者修改 docker-compose.yml 中的端口映射
-   ```
-
-2. **权限问题**
-   ```bash
-   # 确保数据目录权限正确
-   sudo chown -R $USER:$USER /opt/nodeseeker/data
-   ```
-
-3. **容器无法启动**
-   ```bash
-   # 查看详细错误信息
-   docker-compose logs nodeseeker
-   ```
-
-### 重置环境
+不使用 Compose 时可直接构建：
 
 ```bash
-# 停止并删除所有容器、网络、卷
-docker-compose down -v
-
-# 清理未使用的资源
-docker system prune -a
+docker build -t nodeseeker:local .
 ```
 
-## 备份和恢复
-
-### 备份数据
+## 服务管理
 
 ```bash
-# 备份数据库
-docker cp nodeseeker-app:/usr/src/app/data/nodeseeker.db ./backup/
+# 服务状态
+docker compose ps
 
-# 或者直接备份数据卷
-docker run --rm -v nodeseeker_data:/data -v $(pwd):/backup alpine tar czf /backup/nodeseeker-backup.tar.gz -C /data .
+# 实时日志
+docker compose logs -f nodeseeker
+
+# 重启
+docker compose restart nodeseeker
+
+# 停止并删除容器，保留数据
+docker compose down
 ```
 
-### 恢复数据
+## 数据持久化
+
+Compose 创建两个命名卷：
+
+| 数据卷 | 容器路径 | 用途 |
+|--------|----------|------|
+| `nodeseeker_data` | `/usr/src/app/data` | SQLite 数据库 |
+| `nodeseeker_logs` | `/usr/src/app/logs` | 应用日志 |
+
+查看实际卷名：
 
 ```bash
-# 恢复数据库
-docker cp ./backup/nodeseeker.db nodeseeker-app:/usr/src/app/data/
-
-# 或者恢复整个数据卷
-docker run --rm -v nodeseeker_data:/data -v $(pwd):/backup alpine tar xzf /backup/nodeseeker-backup.tar.gz -C /data
+docker volume ls
 ```
 
-## 性能优化
+备份数据库卷：
 
-1. **资源限制**：在 docker-compose.yml 中添加内存和 CPU 限制
-2. **日志轮转**：配置日志轮转以防止日志文件过大
+```bash
+docker run --rm \
+  -v nodeseeker_data:/data \
+  -v "$PWD":/backup \
+  alpine \
+  tar czf /backup/nodeseeker-backup.tar.gz -C /data .
+```
 
-## 安全建议
+删除容器和数据：
 
-1. 使用强密码和密钥
-2. 定期更新 Docker 镜像
-3. 配置防火墙规则
-4. 启用 HTTPS
-5. 定期备份数据
-6. 监控系统资源使用情况
+```bash
+docker compose down -v
+```
+
+此命令会永久删除 SQLite 数据库，执行前应先备份。
+
+## HTTPS 与飞书回调
+
+飞书事件订阅必须能够通过公网 HTTPS 访问：
+
+```text
+https://你的域名/feishu/events
+```
+
+NodeSeeker 自身监听容器内 `3010` 端口，建议使用 Nginx、Caddy 或现有网关终止 TLS，再转发到宿主机 `3010` 端口。
+
+Nginx 示例：
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:3010;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+```
+
+## 健康检查
+
+```bash
+curl http://localhost:3010/health
+docker inspect --format '{{json .State.Health}}' nodeseeker
+```
+
+## 常见问题
+
+### GHCR 镜像无法拉取
+
+当前项目镜像应为公开镜像。先确认镜像名称和网络：
+
+```bash
+docker pull ghcr.io/planetsider/nodeseeker:latest
+```
+
+### 宿主机端口冲突
+
+修改 `.env` 中的 `PORT`，例如：
+
+```dotenv
+PORT=8080
+CORS_ORIGINS=http://localhost:8080
+```
+
+### 容器反复重启
+
+```bash
+docker compose ps
+docker compose logs nodeseeker
+```
+
+重点检查数据库迁移、数据卷权限和端口配置。
