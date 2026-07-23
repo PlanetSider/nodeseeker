@@ -29,6 +29,8 @@ export interface Post {
   creator: string;
   push_status: number; // 0=待处理, 1=已匹配但未推送, 2=未匹配, 3=已匹配且已推送成功
   sub_id?: number;
+  rss_source_id?: number;
+  rss_source_name?: string;
   pub_date: string;
   push_date?: string;
   created_at?: string;
@@ -45,8 +47,35 @@ export interface KeywordSub {
   keyword3_strict?: number;
   creator?: string;
   category?: string;
+  rss_source_id?: number;
+  rss_source_name?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface RSSSource {
+  id?: number;
+  name: string;
+  url: string;
+  enabled: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AITranslationConfig {
+  enabled: number;
+  api_url: string;
+  api_key: string;
+  model: string;
+  prompt: string;
+  rss_source_ids: number[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface TranslatedPostContent {
+  title: string;
+  content: string;
 }
 
 // RSS 项目接口
@@ -69,6 +98,7 @@ export interface ParsedPost {
   category: string;
   creator: string;
   pub_date: string;
+  rss_source_id?: number;
 }
 
 // API 响应接口

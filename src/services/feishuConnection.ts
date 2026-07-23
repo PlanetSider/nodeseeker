@@ -38,6 +38,14 @@ export class FeishuConnectionService {
                     logger.error('处理飞书长连接消息失败:', error);
                 }
             },
+            'card.action.trigger': async (data: any) => {
+                try {
+                    return await service.handleCardAction(data);
+                } catch (error) {
+                    logger.error('处理飞书卡片操作失败:', error);
+                    return { toast: { type: 'error', content: '操作失败，请重试' } };
+                }
+            },
         });
 
         this.wsClient = new Lark.WSClient({

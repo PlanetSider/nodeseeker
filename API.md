@@ -415,7 +415,13 @@ Authorization: Bearer <token>
 
 NodeSeeker 使用飞书官方 SDK 的 WebSocket 长连接接收 `im.message.receive_v1` 事件，不提供 webhook 接口。
 
-飞书 `/add` 命令支持在关键词后添加 `-y` 开启严格匹配，例如 `/add nc -y vps`。`/clear 30d` 或 `/clear 2m` 可清理指定时间以前的文章。
+飞书 `/add` 命令会发送 RSS 来源选择卡片，可连续选择一个或多个来源应用监控；关键词后添加 `-y` 可开启严格匹配，例如 `/add nc -y vps`。`/del 关键词` 会发送该关键词当前监控来源的取消卡片，仍可使用 `/del 订阅ID` 直接删除订阅。`/clear 30d` 或 `/clear 2m` 可清理指定时间以前的文章。
+
+## AI 翻译
+
+- `GET /api/ai-translation/config`：获取脱敏后的 AI 翻译配置和 RSS 来源列表。
+- `PUT /api/ai-translation/config`：保存启用状态、Chat Completions API URL、API Key、模型、提示词和 `rss_source_ids`。
+- `POST /api/ai-translation/test`：使用当前表单配置执行一次测试翻译，不保存配置。
 
 ### 获取应用状态
 ```http

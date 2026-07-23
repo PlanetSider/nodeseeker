@@ -1,7 +1,7 @@
 import { DatabaseService } from "./database";
 import { getEnvConfig } from "../config/env";
 import { logger } from "../utils/logger";
-import type { Post, RSSItem, ParsedPost, RSSProcessResult } from "../types";
+import type { Post, RSSItem, ParsedPost, RSSProcessResult, RSSSource } from "../types";
 
 export class RSSService {
   private readonly TIMEOUT: number;
@@ -22,10 +22,9 @@ export class RSSService {
   /**
    * 获取 RSS 配置（从数据库）
    */
-  private getRSSConfig(): { url: string; intervalSeconds: number } {
+  private getRSSConfig(): { intervalSeconds: number } {
     const config = this.dbService.getBaseConfig();
     return {
-      url: config?.rss_url || "https://rss.nodeseek.com/",
       intervalSeconds: config?.rss_interval_seconds || 60,
     };
   }
@@ -108,12 +107,11 @@ export class RSSService {
   /**
    * 抓取并解析 RSS 数据
    */
-  async fetchAndParseRSS(): Promise<RSSItem[]> {
+  async fetchAndParseRSS(source: RSSSource): Promise<RSSItem[]> {
     let controller: AbortController | undefined;
     let timeoutId: NodeJS.Timeout | undefined;
 
     try {
-      const rssConfig = this.getRSSConfig();
       const proxy = this.getProxy();
       if (proxy) {
         logger.rss(`使用代理: ${proxy}`);
@@ -153,7 +151,7 @@ export class RSSService {
         fetchOptions.proxy = proxy;
       }
 
-      const response = await fetch(rssConfig.url, fetchOptions);
+      const response = await fetch(source.url, fetchOptions);
 
       if (timeoutId) {
         clearTimeout(timeoutId);
@@ -232,7 +230,7 @@ export class RSSService {
   /**
    * 清洗和格式化数据
    */
-  private cleanAndFormatData(item: RSSItem): ParsedPost | null {
+  private cleanAndFormatData(item: RSSItem, rssSourceId: number): ParsedPost | null {
     const postId = this.extractPostId(item.link);
     if (!postId) {
       logger.warn("无法提取 post_id:", item.link);
@@ -274,13 +272,29 @@ export class RSSService {
       category,
       creator,
       pub_date: pubDate,
+      rss_source_id: rssSourceId,
     };
   }
 
   /**
    * 处理新的 RSS 数据 - 优化版本，批量查询减少数据库访问
    */
-  async processNewRSSData(): Promise<RSSProcessResult> {
+  async processNewRSSData(sourceId?: number): Promise<RSSProcessResult> {
+    const sources = sourceId
+      ? [this.dbService.getRSSSourceById(sourceId)].filter((source): source is RSSSource => !!source)
+      : this.dbService.getAllRSSSources();
+
+    const total: RSSProcessResult = { new: 0, updated: 0, skipped: 0 };
+    for (const source of sources) {
+      const result = await this.processRSSSource(source);
+      total.new += result.new;
+      total.updated += result.updated;
+      total.skipped += result.skipped;
+    }
+    return total;
+  }
+
+  private async processRSSSource(source: RSSSource): Promise<RSSProcessResult> {
     const maxRetries = 3;
     let lastError: Error | null = null;
 
@@ -288,7 +302,8 @@ export class RSSService {
       try {
         if (attempt > 1) logger.rssDebug(`第 ${attempt} 次尝试...`);
 
-        const rssItems = await this.fetchAndParseRSS();
+        logger.rss(`抓取 RSS 源: ${source.name}`);
+        const rssItems = await this.fetchAndParseRSS(source);
 
         let processed = 0;
         let newPosts = 0;
@@ -302,7 +317,7 @@ export class RSSService {
           try {
             processed++;
 
-            const parsedPost = this.cleanAndFormatData(item);
+            const parsedPost = this.cleanAndFormatData(item, source.id!);
             if (!parsedPost) {
               errors++;
               continue;
@@ -317,7 +332,7 @@ export class RSSService {
         }
 
         // 第二步：批量查询已存在的文章
-        const existingPosts = this.dbService.getPostsByPostIds(postIds);
+        const existingPosts = this.dbService.getPostsByPostIds(postIds, source.id);
 
         // 第三步：筛选出需要创建的新文章
         const newPostsToCreate = parsedPosts.filter((parsedPost) => !existingPosts.has(parsedPost.post_id));
@@ -340,7 +355,7 @@ export class RSSService {
               this.dbService.batchCreatePosts(postsWithDefaults);
             newPosts = createdCount;
 
-            logger.rss(`新增 ${createdCount} 篇文章`);
+            logger.rss(`${source.name} 新增 ${createdCount} 篇文章`);
           } catch (error) {
             errors += newPostsToCreate.length;
             logger.error('批量创建文章失败', error);
@@ -377,13 +392,13 @@ export class RSSService {
   /**
    * 手动触发 RSS 更新
    */
-  async manualUpdate(): Promise<{
+  async manualUpdate(sourceId?: number): Promise<{
     success: boolean;
     message: string;
     data?: any;
   }> {
     try {
-      const result = await this.processNewRSSData();
+      const result = await this.processNewRSSData(sourceId);
       return {
         success: true,
         message: `RSS 更新成功`,
@@ -400,9 +415,12 @@ export class RSSService {
   /**
    * 验证 RSS 源是否可访问（使用数据库配置的 URL）
    */
-  async validateRSSSource(): Promise<{ accessible: boolean; message: string }> {
-    const rssConfig = this.getRSSConfig();
-    return this.validateRSSUrl(rssConfig.url);
+  async validateRSSSource(sourceId?: number): Promise<{ accessible: boolean; message: string }> {
+    const source = sourceId
+      ? this.dbService.getRSSSourceById(sourceId)
+      : this.dbService.getAllRSSSources()[0];
+    if (!source) return { accessible: false, message: 'RSS 源不存在' };
+    return this.validateRSSUrl(source.url);
   }
 
   /**
@@ -473,7 +491,7 @@ export class RSSService {
   /**
    * 获取当前 RSS 配置
    */
-  getRSSConfigFromDB(): { url: string; intervalSeconds: number } {
+  getRSSConfigFromDB(): { intervalSeconds: number } {
     return this.getRSSConfig();
   }
 }

@@ -44,6 +44,9 @@ export const HomePage: FC = () => {
                 <button class="dropdown-item" data-drawer="rss">
                   <span>📡</span> RSS 配置
                 </button>
+                <button class="dropdown-item" data-drawer="aiTranslation">
+                  <span>🌐</span> AI 翻译
+                </button>
                 <button class="dropdown-item" data-drawer="feishu">
                   <span>🤖</span> 飞书
                 </button>
@@ -238,6 +241,12 @@ export const HomePage: FC = () => {
                   <option value="sandbox">沙盒</option>
                 </select>
               </div>
+              <div class="sub-form-group">
+                <label class="sub-form-label">RSS 来源</label>
+                <select id="subRssSource" class="input-field">
+                  <option value="">全部来源</option>
+                </select>
+              </div>
             </div>
             {/* 第三行：添加按钮 */}
             <div class="sub-form-row sub-form-row-action">
@@ -270,12 +279,22 @@ export const HomePage: FC = () => {
           </button>
         </div>
         <div class="drawer-content">
-          <form id="rssConfigForm" class="form-stack">
+          <form id="addRssSourceForm" class="form-stack">
             <div class="form-group">
-              <label for="rssUrl" class="form-label">RSS 源地址</label>
-              <input type="url" id="rssUrl" class="input-field" placeholder="https://rss.nodeseek.com/" />
-              <span class="form-hint">支持标准的 RSS/Atom 格式</span>
+              <label for="rssSourceName" class="form-label">来源名称</label>
+              <input type="text" id="rssSourceName" class="input-field" maxlength={50} placeholder="例如：NodeSeek" required />
             </div>
+            <div class="form-group">
+              <label for="rssSourceUrl" class="form-label">RSS 源地址</label>
+              <input type="url" id="rssSourceUrl" class="input-field" placeholder="https://rss.nodeseek.com/" required />
+            </div>
+            <div class="form-actions">
+              <button type="button" id="testNewRssBtn" class="btn btn-secondary">测试连接</button>
+              <button type="submit" class="btn btn-primary">添加来源</button>
+            </div>
+          </form>
+          <div id="rssSourcesList" class="subscriptions-list" style="margin-top: 20px;"></div>
+          <form id="rssConfigForm" class="form-stack">
             <div class="form-group">
               <label for="rssInterval" class="form-label">抓取间隔（秒）</label>
               <input type="number" id="rssInterval" class="input-field" min="10" max="3600" placeholder="60" />
@@ -287,9 +306,6 @@ export const HomePage: FC = () => {
               <span class="form-hint">HTTP/HTTPS 代理，留空则不使用代理</span>
             </div>
             <div class="form-actions">
-              <button type="button" id="testRssBtn" class="btn btn-secondary">
-                测试连接
-              </button>
               <button type="submit" class="btn btn-primary">
                 保存配置
               </button>
@@ -300,6 +316,50 @@ export const HomePage: FC = () => {
               立即抓取 RSS
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* AI 翻译配置抽屉 */}
+      <div id="aiTranslationDrawer" class="drawer drawer-large" style="display: none;">
+        <div class="drawer-header">
+          <h3 class="drawer-title">AI 翻译</h3>
+          <button class="drawer-close" data-drawer="aiTranslation">
+            <svg viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 111.414 1.414l-4.293-4.293-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+            </svg>
+          </button>
+        </div>
+        <div class="drawer-content">
+          <form id="aiTranslationForm" class="form-stack">
+            <label class="toggle-option">
+              <input type="checkbox" id="aiTranslationEnabled" />
+              启用命中文章 AI 翻译后推送
+            </label>
+            <div class="form-group">
+              <label for="aiTranslationUrl" class="form-label">API URL</label>
+              <input type="url" id="aiTranslationUrl" class="input-field" placeholder="https://api.openai.com/v1/chat/completions" />
+            </div>
+            <div class="form-group">
+              <label for="aiTranslationKey" class="form-label">API Key</label>
+              <input type="password" id="aiTranslationKey" class="input-field" placeholder="留空保持当前 Key" />
+            </div>
+            <div class="form-group">
+              <label for="aiTranslationModel" class="form-label">模型</label>
+              <input type="text" id="aiTranslationModel" class="input-field" placeholder="例如：gpt-4o-mini" />
+            </div>
+            <div class="form-group">
+              <label for="aiTranslationPrompt" class="form-label">提示词</label>
+              <textarea id="aiTranslationPrompt" class="input-field" rows={7} placeholder="告诉模型如何翻译标题和正文"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">应用于 RSS 来源</label>
+              <div id="aiTranslationSources" class="source-checkbox-list"></div>
+            </div>
+            <div class="form-actions">
+              <button type="button" id="testAiTranslationBtn" class="btn btn-secondary">测试配置</button>
+              <button type="submit" class="btn btn-primary">保存配置</button>
+            </div>
+          </form>
         </div>
       </div>
 

@@ -456,6 +456,9 @@ async function setupDefaultRssConfig() {
     const config = dbService.getBaseConfig();
     
     if (config) {
+      // 确保至少有一个命名 RSS 源
+      dbService.ensureDefaultRSSSource(config.rss_url || DEFAULT_RSS_CONFIG.url);
+
       // 如果数据库中没有 RSS 配置，则设置默认值
       const updates: { rss_url?: string; rss_interval_seconds?: number; rss_proxy?: string } = {};
       

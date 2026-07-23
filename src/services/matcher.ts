@@ -52,6 +52,9 @@ export class MatcherService {
     };
 
     for (const sub of subscriptions) {
+      if (sub.rss_source_id && sub.rss_source_id !== post.rss_source_id) {
+        continue;
+      }
       const matchResult = this.matchPostWithSubscription(preprocessedPost, sub, config);
       if (matchResult.matched) {
         results.push(matchResult);
@@ -289,7 +292,8 @@ export class MatcherService {
     if (subscriptions.length === 0) {
       const batchUpdates = unpushedPosts.map(post => ({
         postId: post.post_id,
-        pushStatus: 2
+        pushStatus: 2,
+        rssSourceId: post.rss_source_id
       }));
       
       if (batchUpdates.length > 0) {
@@ -304,8 +308,8 @@ export class MatcherService {
       return result;
     }
 
-    const matchedUpdates: Array<{ postId: number; pushStatus: number; subId?: number }> = [];
-    const unmatchedUpdates: Array<{ postId: number; pushStatus: number }> = [];
+    const matchedUpdates: Array<{ postId: number; pushStatus: number; subId?: number; rssSourceId?: number }> = [];
+    const unmatchedUpdates: Array<{ postId: number; pushStatus: number; rssSourceId?: number }> = [];
     const matchedPostsForPush: Array<{ post: Post; subscription: KeywordSub }> = [];
 
     // 第一步：比对所有帖子和订阅，确定匹配状态
@@ -314,14 +318,15 @@ export class MatcherService {
         const matches = this.checkPostMatchesWithData(post, subscriptions, config);
         
         if (matches.length === 0) {
-          unmatchedUpdates.push({ postId: post.post_id, pushStatus: 2 });
+          unmatchedUpdates.push({ postId: post.post_id, pushStatus: 2, rssSourceId: post.rss_source_id });
           result.skipped++;
         } else {
           const firstMatch = matches[0];
           matchedUpdates.push({
             postId: post.post_id,
             pushStatus: 1,
-            subId: firstMatch.subscription?.id
+            subId: firstMatch.subscription?.id,
+            rssSourceId: post.rss_source_id
           });
           if (firstMatch.subscription) {
             matchedPostsForPush.push({ post, subscription: firstMatch.subscription });

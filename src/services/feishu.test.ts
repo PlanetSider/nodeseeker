@@ -27,14 +27,38 @@ function createDatabaseMock() {
         only_title: 0,
     };
 
+    const sources = [
+        { id: 1, name: 'NodeSeek', url: 'https://rss.nodeseek.com/', enabled: 1 },
+        { id: 2, name: 'Custom', url: 'https://example.com/rss', enabled: 1 },
+    ];
+    const subscriptions: any[] = [];
+    let nextSubscriptionId = 1;
+
     return {
         config,
+        sources,
+        subscriptions,
         getBaseConfig: mock(() => config),
         updateBaseConfig: mock((updates: Record<string, unknown>) => Object.assign(config, updates)),
-        getAllKeywordSubs: mock(() => []),
+        getAllKeywordSubs: mock(() => subscriptions),
+        getAllRSSSources: mock((includeDisabled = false) => sources.filter((source) => includeDisabled || source.enabled === 1)),
+        getRSSSourceById: mock((id: number) => sources.find((source) => source.id === id) || null),
         getRecentPosts: mock(() => []),
-        createKeywordSub: mock(() => ({ id: 1 })),
-        deleteKeywordSub: mock(() => true),
+        createKeywordSub: mock((sub: Record<string, unknown>) => {
+            const created = { id: nextSubscriptionId++, ...sub };
+            subscriptions.push(created);
+            return created;
+        }),
+        updateKeywordSub: mock((id: number, updates: Record<string, unknown>) => {
+            const subscription = subscriptions.find((sub) => sub.id === id);
+            return subscription ? Object.assign(subscription, updates) : null;
+        }),
+        deleteKeywordSub: mock((id: number) => {
+            const index = subscriptions.findIndex((sub) => sub.id === id);
+            if (index === -1) return false;
+            subscriptions.splice(index, 1);
+            return true;
+        }),
     };
 }
 
@@ -83,9 +107,9 @@ describe('FeishuService', () => {
         expect(database.updateBaseConfig).toHaveBeenCalledTimes(1);
     });
 
-    it('supports strict keyword flag with /add -y', async () => {
+    it('sends an RSS source card for /add and applies strict keywords on click', async () => {
         const database = createDatabaseMock();
-        mockFeishuFetch();
+        const requests = mockFeishuFetch();
         database.config.feishu_user_open_id = 'ou_user';
         const service = new FeishuService(database as any, 'app-id', 'app-secret');
 
@@ -99,11 +123,131 @@ describe('FeishuService', () => {
             },
         }, 'strict-add-event');
 
+        const cardRequest = requests.find((request) => request.url.includes('/im/v1/messages'));
+        expect(cardRequest!.body.msg_type).toBe('interactive');
+        const card = JSON.parse(cardRequest!.body.content);
+        expect(card.header.title.content).toBe('选择 RSS 来源');
+        expect(card.elements.filter((element: any) => element.tag === 'action')).toHaveLength(2);
+
+        const result = await service.handleCardAction({
+            operator: { open_id: 'ou_user' },
+            action: {
+                value: {
+                    action: 'rss_subscription_toggle',
+                    mode: 'add',
+                    source_id: 2,
+                    keywords: ['nc', 'vps'],
+                    strict: [1, 0],
+                },
+            },
+        });
+
         expect(database.createKeywordSub).toHaveBeenCalledWith(expect.objectContaining({
             keyword1: 'nc',
             keyword1_strict: 1,
             keyword2: 'vps',
             keyword2_strict: 0,
+            rss_source_id: 2,
         }));
+        expect(result?.toast).toEqual(expect.objectContaining({ type: 'success' }));
+    });
+
+    it('can apply one keyword to multiple RSS sources from the card', async () => {
+        const database = createDatabaseMock();
+        database.config.feishu_user_open_id = 'ou_user';
+        const service = new FeishuService(database as any, 'app-id', 'app-secret');
+        const action = (sourceId: number) => service.handleCardAction({
+            operator: { open_id: 'ou_user' },
+            action: { value: {
+                action: 'rss_subscription_toggle',
+                mode: 'add',
+                source_id: sourceId,
+                keywords: ['vps'],
+                strict: [0],
+            } },
+        });
+
+        await action(1);
+        await action(2);
+
+        expect(database.subscriptions.map((sub) => sub.rss_source_id)).toEqual([1, 2]);
+    });
+
+    it('shows monitored RSS sources for /del keyword and removes a selected source', async () => {
+        const database = createDatabaseMock();
+        const requests = mockFeishuFetch();
+        database.config.feishu_user_open_id = 'ou_user';
+        database.subscriptions.push(
+            { id: 1, keyword1: 'vps', keyword1_strict: 0, rss_source_id: 1 },
+            { id: 2, keyword1: 'vps', keyword1_strict: 0, rss_source_id: 2 },
+        );
+        const service = new FeishuService(database as any, 'app-id', 'app-secret');
+
+        await service.handleMessageEvent({
+            sender: { sender_id: { open_id: 'ou_user' } },
+            message: {
+                chat_id: 'oc_chat',
+                chat_type: 'p2p',
+                message_type: 'text',
+                content: JSON.stringify({ text: '/del vps' }),
+            },
+        }, 'delete-card-event');
+
+        const cardRequest = requests.find((request) => request.url.includes('/im/v1/messages'));
+        const card = JSON.parse(cardRequest!.body.content);
+        expect(card.header.title.content).toBe('取消 RSS 监控');
+        expect(card.elements.filter((element: any) => element.tag === 'action')).toHaveLength(2);
+
+        const result = await service.handleCardAction({
+            operator: { open_id: 'ou_user' },
+            action: { value: {
+                action: 'rss_subscription_toggle',
+                mode: 'delete',
+                source_id: 1,
+                keyword: 'vps',
+            } },
+        });
+
+        expect(database.subscriptions.map((sub) => sub.rss_source_id)).toEqual([2]);
+        expect((result?.card as any).elements.filter((element: any) => element.tag === 'action')).toHaveLength(1);
+    });
+
+    it('rejects card actions from users other than the bound Feishu user', async () => {
+        const database = createDatabaseMock();
+        database.config.feishu_user_open_id = 'ou_user';
+        const service = new FeishuService(database as any, 'app-id', 'app-secret');
+
+        const result = await service.handleCardAction({
+            operator: { open_id: 'ou_other' },
+            action: { value: {
+                action: 'rss_subscription_toggle',
+                mode: 'add',
+                source_id: 1,
+                keywords: ['vps'],
+            } },
+        });
+
+        expect(database.createKeywordSub).not.toHaveBeenCalled();
+        expect(result?.toast).toEqual(expect.objectContaining({ type: 'error' }));
+    });
+
+    it('converts an all-source subscription when one source is cancelled', async () => {
+        const database = createDatabaseMock();
+        database.config.feishu_user_open_id = 'ou_user';
+        database.subscriptions.push({ id: 1, keyword1: 'vps', keyword1_strict: 0 });
+        const service = new FeishuService(database as any, 'app-id', 'app-secret');
+
+        await service.handleCardAction({
+            operator: { open_id: 'ou_user' },
+            action: { value: {
+                action: 'rss_subscription_toggle',
+                mode: 'delete',
+                source_id: 1,
+                keyword: 'vps',
+            } },
+        });
+
+        expect(database.subscriptions.map((sub) => sub.rss_source_id)).toEqual([2]);
+        expect(database.subscriptions[0].keyword1).toBe('vps');
     });
 });
