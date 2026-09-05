@@ -174,7 +174,7 @@ export class FeishuService {
         const translated = await new AITranslationService(this.dbService).translatePost(post);
         const postContent = translated
             ? `${translated.title}\n\n${translated.content}`
-            : post.title;
+            : `${post.title}\n\n${post.memo}`;
         const link = post.link || `https://www.nodeseek.com/post-${post.post_id}-1`;
         const text = `${details}\n\n${postContent}\n${link}`;
         const success = await this.sendLongMessage(config.feishu_chat_id, text);

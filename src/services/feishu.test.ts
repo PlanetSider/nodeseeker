@@ -148,6 +148,31 @@ describe('FeishuService', () => {
         expect(JSON.parse(messageRequest!.body.content).text).toContain('📡 Custom');
     });
 
+    it('includes the original post body when AI translation is unavailable', async () => {
+        const database = createDatabaseMock();
+        database.config.feishu_chat_id = 'oc_chat';
+        database.config.feishu_user_open_id = 'ou_user';
+        const requests = mockFeishuFetch();
+        const service = new FeishuService(database as any, 'app-id', 'app-secret');
+
+        const sent = await service.pushPost({
+            post_id: 456,
+            title: 'Original title',
+            memo: 'Original post body',
+            category: 'tech',
+            creator: 'tester',
+            push_status: 0,
+            rss_source_id: 1,
+            pub_date: new Date().toISOString(),
+        });
+
+        expect(sent).toBe(true);
+        const messageRequest = requests.find((request) => request.url.includes('/im/v1/messages'));
+        const messageText = JSON.parse(messageRequest!.body.content).text as string;
+        expect(messageText).toContain('Original title');
+        expect(messageText).toContain('Original post body');
+    });
+
     it('sends an RSS source card for /add and applies strict keywords on click', async () => {
         const database = createDatabaseMock();
         const requests = mockFeishuFetch();
