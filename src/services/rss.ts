@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { DatabaseService } from "./database";
 import { getEnvConfig } from "../config/env";
 import { logger } from "../utils/logger";
+import { htmlToReadableText } from "../utils/content";
 import type { Post, RSSItem, ParsedPost, RSSProcessResult, RSSSource } from "../types";
 
 export class RSSService {
@@ -257,10 +258,11 @@ export class RSSService {
     // 清洗标题
     const title = item.title.trim().replace(/\s+/g, " ");
 
-    // 清洗完整正文，优先使用 RSS content，避免 AI 翻译和飞书推送只拿到摘要。
-    let memo = item.content || item.contentSnippet || "";
-    memo = memo.replace(/<[^>]*>/g, ""); // 移除 HTML 标签
-    memo = memo.trim().replace(/\s+/g, " ");
+    // 保留原始 HTML 供飞书富文本渲染，同时生成便于搜索和 AI 翻译的可读文本。
+    const contentHtml = item.content || "";
+    const memo = contentHtml
+      ? htmlToReadableText(contentHtml)
+      : item.contentSnippet.trim();
 
     // 清洗分类
     const category = item.category ? item.category.trim() : "";
@@ -290,6 +292,7 @@ export class RSSService {
       pub_date: pubDate,
       rss_source_id: rssSourceId,
       link: item.link,
+      content_html: contentHtml || undefined,
     };
   }
 

@@ -49,3 +49,17 @@ describe('010 multi-source and AI usage migration', () => {
         db.close();
     });
 });
+
+describe('011 post HTML content migration', () => {
+    it('adds storage for the original RSS HTML', () => {
+        const db = new Database(':memory:');
+        const migrationsDirectory = join(process.cwd(), 'src', 'database', 'migrations');
+        db.exec(readFileSync(join(migrationsDirectory, '001_initial.sql'), 'utf8'));
+        db.exec(readFileSync(join(migrationsDirectory, '011_add_post_content_html.sql'), 'utf8'));
+
+        const columns = db.query('PRAGMA table_info(posts)').all() as Array<{ name: string }>;
+        expect(columns.some((column) => column.name === 'content_html')).toBe(true);
+
+        db.close();
+    });
+});

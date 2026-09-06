@@ -2,6 +2,7 @@ import { DatabaseService } from './database';
 import { AITranslationService } from './aiTranslation';
 import { logger } from '../utils/logger';
 import { getCleanupCutoffDate, parseCleanupDuration } from '../utils/cleanup';
+import { htmlToMarkdown } from '../utils/content';
 import type { KeywordSub, Post, RSSSource } from '../types';
 
 interface FeishuApiResponse<T = unknown> {
@@ -53,6 +54,7 @@ type CommandReply = string | { card: FeishuCard };
 const API_BASE = 'https://open.feishu.cn/open-apis';
 const processedEvents = new Map<string, number>();
 const FEISHU_TEXT_CHUNK_SIZE = 3500;
+const FEISHU_CHUNK_DELAY_MS = 250;
 
 export class FeishuService {
     private accessToken?: string;
@@ -122,11 +124,55 @@ export class FeishuService {
 
     async sendLongMessage(receiveId: string, text: string, receiveIdType = 'chat_id'): Promise<boolean> {
         const chunks = this.splitMessage(text);
-        for (const chunk of chunks) {
+        for (let index = 0; index < chunks.length; index++) {
+            const chunk = chunks[index];
             const sent = await this.sendMessage(receiveId, chunk, receiveIdType);
             if (!sent) return false;
+            if (index < chunks.length - 1) await this.waitForNextChunk();
         }
         return true;
+    }
+
+    async sendLongPost(receiveId: string, title: string, markdown: string, receiveIdType = 'chat_id'): Promise<boolean> {
+        const chunks = this.splitContent(markdown);
+        for (let index = 0; index < chunks.length; index++) {
+            const chunkTitle = chunks.length > 1 ? `${title} (${index + 1}/${chunks.length})` : title;
+            const sent = await this.sendPostMessage(receiveId, chunkTitle, chunks[index], receiveIdType);
+            if (!sent) return false;
+            if (index < chunks.length - 1) await this.waitForNextChunk();
+        }
+        return true;
+    }
+
+    private async sendPostMessage(receiveId: string, title: string, markdown: string, receiveIdType: string): Promise<boolean> {
+        try {
+            const token = await this.getAccessToken();
+            const response = await fetch(`${API_BASE}/im/v1/messages?receive_id_type=${receiveIdType}`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json; charset=utf-8',
+                },
+                body: JSON.stringify({
+                    receive_id: receiveId,
+                    msg_type: 'post',
+                    content: JSON.stringify({
+                        zh_cn: {
+                            title,
+                            content: [[{ tag: 'md', text: markdown }]],
+                        },
+                    }),
+                }),
+            });
+            const result = await response.json() as FeishuApiResponse;
+            if (!response.ok || result.code !== 0) {
+                throw new Error(result.msg || `HTTP ${response.status}`);
+            }
+            return true;
+        } catch (error) {
+            logger.error('发送飞书富文本消息失败:', error);
+            return false;
+        }
     }
 
     async sendCard(receiveId: string, card: FeishuCard, receiveIdType = 'chat_id'): Promise<boolean> {
@@ -172,12 +218,12 @@ export class FeishuService {
             (sourceName || post.rss_source_name || matchedSub?.rss_source_name) && `📡 ${sourceName || post.rss_source_name || matchedSub?.rss_source_name}`,
         ].filter(Boolean).join('  ');
         const translated = await new AITranslationService(this.dbService).translatePost(post);
-        const postContent = translated
-            ? `${translated.title}\n\n${translated.content}`
-            : `${post.title}\n\n${post.memo}`;
+        const title = translated?.title || post.title;
+        const postContent = translated?.content
+            || (post.content_html ? htmlToMarkdown(post.content_html) : post.memo);
         const link = post.link || `https://www.nodeseek.com/post-${post.post_id}-1`;
-        const text = `${details}\n\n${postContent}\n${link}`;
-        const success = await this.sendLongMessage(config.feishu_chat_id, text);
+        const markdown = [details, postContent, `[查看原文](${link})`].filter(Boolean).join('\n\n');
+        const success = await this.sendLongPost(config.feishu_chat_id, title, markdown);
 
         if (success) {
             this.dbService.updatePostPushStatus(post.post_id, 3, matchedSub?.id, new Date().toISOString(), post.rss_source_id);
@@ -186,20 +232,30 @@ export class FeishuService {
     }
 
     private splitMessage(text: string): string[] {
-        if (text.length <= FEISHU_TEXT_CHUNK_SIZE) return [text];
+        const chunks = this.splitContent(text);
+        return chunks.map((chunk, index) => chunks.length > 1 ? `(${index + 1}/${chunks.length})\n${chunk}` : chunk);
+    }
+
+    private splitContent(text: string): string[] {
+        if (Array.from(text).length <= FEISHU_TEXT_CHUNK_SIZE) return [text];
         const chunks: string[] = [];
         let remaining = text;
-        while (remaining.length > FEISHU_TEXT_CHUNK_SIZE) {
-            let splitAt = remaining.lastIndexOf('\n\n', FEISHU_TEXT_CHUNK_SIZE);
+        while (Array.from(remaining).length > FEISHU_TEXT_CHUNK_SIZE) {
+            const safeWindow = Array.from(remaining).slice(0, FEISHU_TEXT_CHUNK_SIZE).join('');
+            let splitAt = safeWindow.lastIndexOf('\n\n');
             if (splitAt < FEISHU_TEXT_CHUNK_SIZE * 0.5) {
-                splitAt = remaining.lastIndexOf('\n', FEISHU_TEXT_CHUNK_SIZE);
+                splitAt = safeWindow.lastIndexOf('\n');
             }
-            if (splitAt < FEISHU_TEXT_CHUNK_SIZE * 0.5) splitAt = FEISHU_TEXT_CHUNK_SIZE;
-            chunks.push(remaining.slice(0, splitAt).trimEnd());
-            remaining = remaining.slice(splitAt).trimStart();
+            if (splitAt < FEISHU_TEXT_CHUNK_SIZE * 0.5) splitAt = safeWindow.length;
+            chunks.push(remaining.slice(0, splitAt));
+            remaining = remaining.slice(splitAt);
         }
         if (remaining) chunks.push(remaining);
-        return chunks.map((chunk, index) => chunks.length > 1 ? `(${index + 1}/${chunks.length})\n${chunk}` : chunk);
+        return chunks;
+    }
+
+    private async waitForNextChunk(): Promise<void> {
+        await new Promise((resolve) => setTimeout(resolve, FEISHU_CHUNK_DELAY_MS));
     }
 
     async handleMessageEvent(payload: FeishuMessageEvent, eventId?: string): Promise<void> {

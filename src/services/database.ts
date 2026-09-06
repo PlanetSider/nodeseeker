@@ -191,8 +191,8 @@ export class DatabaseService {
   // 文章相关操作
   createPost(post: Omit<Post, 'id' | 'created_at'>): Post {
     const stmt = this.db.query(`
-      INSERT INTO posts (post_id, title, memo, category, creator, push_status, sub_id, rss_source_id, link, pub_date, push_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO posts (post_id, title, memo, category, creator, push_status, sub_id, rss_source_id, link, content_html, pub_date, push_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *
     `);
 
@@ -206,6 +206,7 @@ export class DatabaseService {
       post.sub_id || null,
       post.rss_source_id || null,
       post.link || null,
+      post.content_html || null,
       post.pub_date,
       post.push_date || null
     ) as Post;
@@ -226,8 +227,8 @@ export class DatabaseService {
     }
 
     const stmt = this.db.query(`
-      INSERT INTO posts (post_id, title, memo, category, creator, push_status, sub_id, rss_source_id, link, pub_date, push_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO posts (post_id, title, memo, category, creator, push_status, sub_id, rss_source_id, link, content_html, pub_date, push_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     // 使用事务进行批量插入
@@ -245,6 +246,7 @@ export class DatabaseService {
             post.sub_id || null,
             post.rss_source_id || null,
             post.link || null,
+            post.content_html || null,
             post.pub_date,
             post.push_date || null
           );
@@ -445,7 +447,7 @@ export class DatabaseService {
       ORDER BY p.pub_date DESC 
       LIMIT ? OFFSET ?
     `);
-    const posts = postsStmt.all(...params, limit, offset) as Post[];
+    const posts = (postsStmt.all(...params, limit, offset) as Post[]).map(({ content_html, ...post }) => post);
     
     // 查询总数（使用与主查询相同的别名和 JOIN）
     const countStmt = this.db.query(`

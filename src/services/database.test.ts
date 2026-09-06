@@ -15,3 +15,45 @@ describe('DatabaseService database size', () => {
         db.close();
     });
 });
+
+describe('DatabaseService post content', () => {
+    it('stores the original RSS HTML with the post', () => {
+        const db = new Database(':memory:');
+        db.exec(`
+            CREATE TABLE posts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                memo TEXT NOT NULL,
+                category TEXT NOT NULL,
+                creator TEXT NOT NULL,
+                push_status INTEGER DEFAULT 0,
+                sub_id INTEGER,
+                rss_source_id INTEGER,
+                link TEXT,
+                content_html TEXT,
+                pub_date TEXT NOT NULL,
+                push_date TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        const service = new DatabaseService(db);
+        const contentHtml = '<p>First paragraph</p><p><strong>Second paragraph</strong></p>';
+
+        service.createPost({
+            post_id: 101,
+            title: 'Formatted post',
+            memo: 'First paragraph\n\nSecond paragraph',
+            content_html: contentHtml,
+            category: 'tech',
+            creator: 'tester',
+            push_status: 0,
+            rss_source_id: 1,
+            link: 'https://example.com/post/101',
+            pub_date: new Date().toISOString(),
+        });
+
+        expect(service.getPostByPostId(101)?.content_html).toBe(contentHtml);
+        db.close();
+    });
+});

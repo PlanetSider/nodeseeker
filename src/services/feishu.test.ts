@@ -19,6 +19,14 @@ function mockFeishuFetch(requests: Array<{ url: string; body: any }> = []) {
     return requests;
 }
 
+function getPostContent(request: { body: any }): { title: string; text: string } {
+    const content = JSON.parse(request.body.content).zh_cn;
+    return {
+        title: content.title,
+        text: content.content.flat().map((element: { text?: string }) => element.text || '').join(''),
+    };
+}
+
 function createDatabaseMock() {
     const config = {
         username: 'admin',
@@ -145,7 +153,8 @@ describe('FeishuService', () => {
 
         expect(sent).toBe(true);
         const messageRequest = requests.find((request) => request.url.includes('/im/v1/messages'));
-        expect(JSON.parse(messageRequest!.body.content).text).toContain('📡 Custom');
+        expect(messageRequest!.body.msg_type).toBe('post');
+        expect(getPostContent(messageRequest!).text).toContain('📡 Custom');
     });
 
     it('includes the original post body when AI translation is unavailable', async () => {
@@ -168,9 +177,50 @@ describe('FeishuService', () => {
 
         expect(sent).toBe(true);
         const messageRequest = requests.find((request) => request.url.includes('/im/v1/messages'));
-        const messageText = JSON.parse(messageRequest!.body.content).text as string;
-        expect(messageText).toContain('Original title');
-        expect(messageText).toContain('Original post body');
+        const message = getPostContent(messageRequest!);
+        expect(message.title).toBe('Original title');
+        expect(message.text).toContain('Original post body');
+    });
+
+    it('renders original HTML as Markdown in Feishu posts', async () => {
+        const database = createDatabaseMock();
+        database.config.feishu_chat_id = 'oc_chat';
+        const requests = mockFeishuFetch();
+        const service = new FeishuService(database as any, 'app-id', 'app-secret');
+
+        const sent = await service.pushPost({
+            post_id: 789,
+            title: 'Formatted post',
+            memo: 'Fallback body',
+            content_html: '<p><strong>Important</strong></p><ul><li>First</li><li>Second</li></ul><p><a href="https://example.com/docs">Docs</a></p>',
+            category: 'tech',
+            creator: 'tester',
+            push_status: 0,
+            rss_source_id: 1,
+            pub_date: new Date().toISOString(),
+        });
+
+        expect(sent).toBe(true);
+        const messageRequest = requests.find((request) => request.url.includes('/im/v1/messages'));
+        const message = getPostContent(messageRequest!);
+        expect(message.text).toContain('**Important**');
+        expect(message.text).toContain('-   First');
+        expect(message.text).toContain('[Docs](https://example.com/docs)');
+    });
+
+    it('splits long rich posts without truncating text or breaking emoji', async () => {
+        const database = createDatabaseMock();
+        const requests = mockFeishuFetch();
+        const service = new FeishuService(database as any, 'app-id', 'app-secret');
+        const longMarkdown = `${'段落内容🙂'.repeat(900)}\n\n结尾`;
+
+        const sent = await service.sendLongPost('oc_chat', 'Long post', longMarkdown);
+
+        expect(sent).toBe(true);
+        const postRequests = requests.filter((request) => request.body?.msg_type === 'post');
+        expect(postRequests.length).toBeGreaterThan(1);
+        expect(postRequests.map((request) => getPostContent(request).text).join('')).toBe(longMarkdown);
+        expect(getPostContent(postRequests[0]).title).toContain('(1/');
     });
 
     it('sends an RSS source card for /add and applies strict keywords on click', async () => {

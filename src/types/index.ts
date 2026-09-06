@@ -32,6 +32,7 @@ export interface Post {
   rss_source_id?: number;
   rss_source_name?: string;
   link?: string;
+  content_html?: string;
   pub_date: string;
   push_date?: string;
   created_at?: string;
@@ -108,6 +109,7 @@ export interface ParsedPost {
   pub_date: string;
   rss_source_id?: number;
   link?: string;
+  content_html?: string;
 }
 
 // API 响应接口

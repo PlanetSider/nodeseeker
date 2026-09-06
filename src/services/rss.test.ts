@@ -66,5 +66,21 @@ describe('RSSService content parsing', () => {
 
         expect(parsed?.memo).toContain('完整正文'.repeat(300));
         expect(parsed?.memo).not.toBe('短摘要');
+        expect(parsed?.content_html).toBe(fullContent);
+    });
+
+    it('keeps readable paragraphs, lists, links, and HTML entities', () => {
+        const service = createRSSService();
+        const content = '<h2>小标题</h2><p>第一段&nbsp;内容</p><ul><li>项目一</li><li>项目二</li></ul><p><a href="https://example.com">参考链接</a></p>';
+
+        const parsed = service.parseRSSItem({
+            ...baseItem,
+            content,
+        }, 1);
+
+        expect(parsed?.memo).toContain('小标题\n\n第一段 内容');
+        expect(parsed?.memo).toContain('-   项目一');
+        expect(parsed?.memo).toContain('参考链接 (https://example.com)');
+        expect(parsed?.content_html).toBe(content);
     });
 });
