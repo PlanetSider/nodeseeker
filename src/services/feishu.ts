@@ -3,6 +3,7 @@ import { AITranslationService } from './aiTranslation';
 import { logger } from '../utils/logger';
 import { getCleanupCutoffDate, parseCleanupDuration } from '../utils/cleanup';
 import { htmlToMarkdown } from '../utils/content';
+import { NodeSeekService } from './nodeseek';
 import type { KeywordSub, Post, RSSSource } from '../types';
 
 interface FeishuApiResponse<T = unknown> {
@@ -49,7 +50,7 @@ export interface FeishuCardActionEvent {
 }
 
 type FeishuCard = Record<string, unknown>;
-type CommandReply = string | { card: FeishuCard };
+type CommandReply = string | { card: FeishuCard } | { post: { title: string; markdown: string } };
 
 const API_BASE = 'https://open.feishu.cn/open-apis';
 const processedEvents = new Map<string, number>();
@@ -304,6 +305,8 @@ export class FeishuService {
             await this.sendMessage(message.chat_id, reply);
         } else if (reply?.card) {
             await this.sendCard(message.chat_id, reply.card);
+        } else if (reply?.post) {
+            await this.sendLongPost(message.chat_id, reply.post.title, reply.post.markdown);
         }
     }
 
@@ -409,6 +412,8 @@ export class FeishuService {
                 return this.createDeleteSubscriptionCard(args);
             case '/post':
                 return this.listRecentPosts();
+            case '/show':
+                return await this.showPost(args);
             case '/clear':
                 return this.clearPosts(args);
             default:
@@ -697,6 +702,34 @@ export class FeishuService {
         return `最近 10 条文章：\n\n${posts.map((post, index) => `${index + 1}. ${post.title}\n${post.link || `https://www.nodeseek.com/post-${post.post_id}-1`}`).join('\n')}`;
     }
 
+    private async showPost(args: string[]): Promise<CommandReply> {
+        if (args.length !== 1 || !/^\d+$/.test(args[0]) || Number(args[0]) <= 0) {
+            return '用法：/show 帖子编号，例如：/show 123456';
+        }
+
+        try {
+            const post = await new NodeSeekService(this.dbService).fetchPost(Number(args[0]));
+            const detailLines = [
+                '📡 NodeSeek',
+                [
+                    post.creator && `👤 ${post.creator}`,
+                    post.category && `🗂️ ${this.getCategoryName(post.category)}`,
+                ].filter(Boolean).join('  '),
+                `🆔 帖子编号：${post.postId}`,
+            ].filter(Boolean);
+            return {
+                post: {
+                    title: post.title,
+                    markdown: ['正文：', ...detailLines, post.content, `[查看原文](${post.link})`]
+                        .filter(Boolean)
+                        .join('\n'),
+                },
+            };
+        } catch (error) {
+            return error instanceof Error ? error.message : `获取帖子失败：${String(error)}`;
+        }
+    }
+
     private clearPosts(args: string[]): string {
         const duration = parseCleanupDuration(args[0]);
         if (!duration) return '用法：/clear 30d 或 /clear 2m（也支持 30天、2月）。';
@@ -721,6 +754,7 @@ export class FeishuService {
             '/del 关键词 - 打开卡片选择要取消监控的 RSS 来源',
             '/del 订阅ID - 直接删除指定订阅（兼容旧用法）',
             '/post - 查看最近 10 条文章',
+            '/show 帖子编号 - 从 NodeSeek 网站获取完整正文',
             '/clear 30d 或 /clear 2m - 清理指定时间以前的文章',
             '/stop - 停止推送',
             '/resume - 恢复推送',

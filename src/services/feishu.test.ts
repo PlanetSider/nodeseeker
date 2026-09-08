@@ -242,6 +242,50 @@ describe('FeishuService', () => {
         expect(getPostContent(messageRequest!).text).not.toContain('🆔 帖子编号');
     });
 
+    it('fetches and sends a complete NodeSeek post for /show without changing push status', async () => {
+        const database = createDatabaseMock();
+        database.config.feishu_user_open_id = 'ou_user';
+        const requests: Array<{ url: string; body: any }> = [];
+        globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit & { proxy?: string }) => {
+            const url = input.toString();
+            const body = init?.body ? JSON.parse(init.body.toString()) : null;
+            requests.push({ url, body });
+            if (url === 'https://www.nodeseek.com/post-123456-1') {
+                return new Response(`
+                    <meta property="og:title" content="网站完整标题">
+                    <meta name="author" content="alice">
+                    <meta property="article:section" content="tech">
+                    <div class="post-content"><p>RSS 没有显示的完整正文</p></div>
+                `, { status: 200 });
+            }
+            if (url.includes('tenant_access_token')) {
+                return Response.json({ code: 0, msg: 'ok', tenant_access_token: 'token', expire: 7200 });
+            }
+            return Response.json({ code: 0, msg: 'ok' });
+        }) as typeof fetch;
+
+        const service = new FeishuService(database as any, 'app-id', 'app-secret');
+        await service.handleMessageEvent({
+            sender: { sender_id: { open_id: 'ou_user' } },
+            message: {
+                chat_id: 'oc_chat',
+                chat_type: 'p2p',
+                message_type: 'text',
+                content: JSON.stringify({ text: '/show 123456' }),
+            },
+        }, 'show-event');
+
+        const messageRequest = requests.find((request) => request.body?.msg_type === 'post');
+        expect(messageRequest).toBeDefined();
+        const message = getPostContent(messageRequest!);
+        expect(message.title).toBe('网站完整标题');
+        expect(message.text).toContain('📡 NodeSeek');
+        expect(message.text).toContain('👤 alice  🗂️ 技术');
+        expect(message.text).toContain('🆔 帖子编号：123456');
+        expect(message.text).toContain('RSS 没有显示的完整正文');
+        expect(database.updatePostPushStatus).not.toHaveBeenCalled();
+    });
+
     it('renders original HTML as Markdown in Feishu posts', async () => {
         const database = createDatabaseMock();
         database.config.feishu_chat_id = 'oc_chat';
