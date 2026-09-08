@@ -211,18 +211,33 @@ export class FeishuService {
         const sourceName = post.rss_source_id
             ? this.dbService.getRSSSourceById(post.rss_source_id)?.name
             : undefined;
-        const details = [
-            keywords && `🎯 ${keywords}`,
-            matchedSub?.creator && `👤 ${matchedSub.creator}`,
-            matchedSub?.category && `🗂️ ${this.getCategoryName(matchedSub.category)}`,
-            (sourceName || post.rss_source_name || matchedSub?.rss_source_name) && `📡 ${sourceName || post.rss_source_name || matchedSub?.rss_source_name}`,
-        ].filter(Boolean).join('  ');
+        const sourceLabel = sourceName || post.rss_source_name || matchedSub?.rss_source_name;
+        const authorLabel = post.creator?.trim() || matchedSub?.creator?.trim();
+        const categoryLabel = post.category?.trim()
+            ? this.getCategoryName(post.category)
+            : matchedSub?.category
+                ? this.getCategoryName(matchedSub.category)
+                : undefined;
+        const nodeSeekPostId = this.extractNodeSeekPostId(post.link);
+        const detailLines = [
+            [
+                keywords && `🎯 ${keywords}`,
+                sourceLabel && `📡 ${sourceLabel}`,
+            ].filter(Boolean).join('  '),
+            [
+                authorLabel && `👤 ${authorLabel}`,
+                categoryLabel && `🗂️ ${categoryLabel}`,
+            ].filter(Boolean).join('  '),
+            nodeSeekPostId && `🆔 帖子编号：${nodeSeekPostId}`,
+        ].filter(Boolean);
         const translated = await new AITranslationService(this.dbService).translatePost(post);
         const title = translated?.title || post.title;
         const postContent = translated?.content
             || (post.content_html ? htmlToMarkdown(post.content_html) : post.memo);
         const link = post.link || `https://www.nodeseek.com/post-${post.post_id}-1`;
-        const markdown = [details, postContent, `[查看原文](${link})`].filter(Boolean).join('\n\n');
+        const markdown = ['正文：', ...detailLines, postContent, `[查看原文](${link})`]
+            .filter(Boolean)
+            .join('\n');
         const success = await this.sendLongPost(config.feishu_chat_id, title, markdown);
 
         if (success) {
@@ -256,6 +271,11 @@ export class FeishuService {
 
     private async waitForNextChunk(): Promise<void> {
         await new Promise((resolve) => setTimeout(resolve, FEISHU_CHUNK_DELAY_MS));
+    }
+
+    private extractNodeSeekPostId(link?: string): string | undefined {
+        if (!link) return undefined;
+        return link.match(/(?:^|\/)post-(\d+)-1(?:$|[/?#])/i)?.[1];
     }
 
     async handleMessageEvent(payload: FeishuMessageEvent, eventId?: string): Promise<void> {

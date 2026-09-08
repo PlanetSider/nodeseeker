@@ -149,12 +149,24 @@ describe('FeishuService', () => {
             push_status: 0,
             rss_source_id: 2,
             pub_date: new Date().toISOString(),
-        }, { id: 1, keyword1: 'Example', rss_source_name: 'NodeSeek' });
+        }, {
+            id: 1,
+            keyword1: 'Example',
+            creator: 'tester',
+            category: 'tech',
+            rss_source_name: 'NodeSeek',
+        });
 
         expect(sent).toBe(true);
         const messageRequest = requests.find((request) => request.url.includes('/im/v1/messages'));
         expect(messageRequest!.body.msg_type).toBe('post');
-        expect(getPostContent(messageRequest!).text).toContain('📡 Custom');
+        expect(getPostContent(messageRequest!).text).toBe([
+            '正文：',
+            '🎯 Example  📡 Custom',
+            '👤 tester  🗂️ 技术',
+            'Body',
+            '[查看原文](https://www.nodeseek.com/post-123-1)',
+        ].join('\n'));
     });
 
     it('includes the original post body when AI translation is unavailable', async () => {
@@ -179,7 +191,55 @@ describe('FeishuService', () => {
         const messageRequest = requests.find((request) => request.url.includes('/im/v1/messages'));
         const message = getPostContent(messageRequest!);
         expect(message.title).toBe('Original title');
+        expect(message.text).toContain('👤 tester');
+        expect(message.text).toContain('🗂️ 技术');
         expect(message.text).toContain('Original post body');
+    });
+
+    it('includes the NodeSeek post number below the author row', async () => {
+        const database = createDatabaseMock();
+        database.config.feishu_chat_id = 'oc_chat';
+        const requests = mockFeishuFetch();
+        const service = new FeishuService(database as any, 'app-id', 'app-secret');
+
+        const sent = await service.pushPost({
+            post_id: 987,
+            title: 'NodeSeek post',
+            memo: 'Post body',
+            category: 'tech',
+            creator: 'author',
+            push_status: 0,
+            rss_source_id: 1,
+            link: 'https://www.nodeseek.com/post-987-1',
+            pub_date: new Date().toISOString(),
+        });
+
+        expect(sent).toBe(true);
+        const messageRequest = requests.find((request) => request.url.includes('/im/v1/messages'));
+        const message = getPostContent(messageRequest!);
+        expect(message.text).toContain('👤 author  🗂️ 技术\n🆔 帖子编号：987');
+    });
+
+    it('does not add a NodeSeek post number for other link formats', async () => {
+        const database = createDatabaseMock();
+        database.config.feishu_chat_id = 'oc_chat';
+        const requests = mockFeishuFetch();
+        const service = new FeishuService(database as any, 'app-id', 'app-secret');
+
+        await service.pushPost({
+            post_id: 988,
+            title: 'Other post',
+            memo: 'Post body',
+            category: 'tech',
+            creator: 'author',
+            push_status: 0,
+            rss_source_id: 2,
+            link: 'https://lowendtalk.com/discussion/988/topic',
+            pub_date: new Date().toISOString(),
+        });
+
+        const messageRequest = requests.find((request) => request.url.includes('/im/v1/messages'));
+        expect(getPostContent(messageRequest!).text).not.toContain('🆔 帖子编号');
     });
 
     it('renders original HTML as Markdown in Feishu posts', async () => {
